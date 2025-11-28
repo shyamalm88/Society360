@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:intl/intl.dart';
 import '../../../config/theme.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/socket/socket_service.dart';
@@ -307,6 +308,7 @@ class HomeTabScreen extends ConsumerWidget {
     final flatNumber = storage.flatNumber ?? 'N/A';
     final blockName = storage.blockName ?? 'N/A';
     final societyName = storage.societyName ?? 'Society360';
+    final flatId = storage.flatId ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FC),
@@ -437,7 +439,7 @@ class HomeTabScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
 
                   // Today's Visitors Status
-                  _buildTodayVisitorsCard().animate().fadeIn(delay: 300.ms),
+                  _buildTodayVisitorsCard(context, ref, flatId).animate().fadeIn(delay: 300.ms),
                   const SizedBox(height: 24),
 
                   // Recent Activity
@@ -587,155 +589,367 @@ class HomeTabScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTodayVisitorsCard() {
-    // Mock data - in real app, fetch from API
-    final visitors = [
-      {'name': 'Delivery - Amazon', 'time': '10:30 AM', 'status': 'Approved'},
-      {'name': 'Guest - Raj Kumar', 'time': '02:15 PM', 'status': 'Pending'},
-      {'name': 'Plumber - Kumar', 'time': '04:00 PM', 'status': 'Expected'},
-    ];
+  /// Get icon and color based on visitor purpose (matches guard app exactly)
+  Map<String, dynamic> _getPurposeIconAndColor(String purpose) {
+    final purposeLower = purpose.toLowerCase();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    if (purposeLower.contains('delivery') && !purposeLower.contains('food')) {
+      return {'icon': Icons.local_shipping, 'color': const Color(0xFFFF6B35)};
+    } else if (purposeLower.contains('guest')) {
+      return {'icon': Icons.person, 'color': const Color(0xFF4ECDC4)};
+    } else if (purposeLower.contains('cab') || purposeLower.contains('taxi')) {
+      return {'icon': Icons.local_taxi, 'color': const Color(0xFFF7B801)};
+    } else if (purposeLower.contains('service')) {
+      return {'icon': Icons.build, 'color': const Color(0xFF95E1D3)};
+    } else if (purposeLower.contains('food')) {
+      return {'icon': Icons.restaurant, 'color': const Color(0xFFFF8B94)};
+    } else if (purposeLower.contains('courier')) {
+      return {'icon': Icons.mail, 'color': const Color(0xFF9B59B6)};
+    } else if (purposeLower.contains('doctor')) {
+      return {'icon': Icons.medical_services, 'color': const Color(0xFF3498DB)};
+    } else if (purposeLower.contains('plumber')) {
+      return {'icon': Icons.plumbing, 'color': const Color(0xFF2ECC71)};
+    } else if (purposeLower.contains('electrician')) {
+      return {'icon': Icons.electrical_services, 'color': const Color(0xFFE74C3C)};
+    } else if (purposeLower.contains('carpenter')) {
+      return {'icon': Icons.carpenter, 'color': const Color(0xFF8E44AD)};
+    } else if (purposeLower.contains('cleaning')) {
+      return {'icon': Icons.cleaning_services, 'color': const Color(0xFF1ABC9C)};
+    } else {
+      return {'icon': Icons.more_horiz, 'color': const Color(0xFF7F8C8D)};
+    }
+  }
+
+  Widget _buildTodayVisitorsCard(BuildContext context, WidgetRef ref, String flatId) {
+    final todaysVisitorsAsync = ref.watch(todaysVisitorsProvider(flatId));
+
+    return todaysVisitorsAsync.when(
+      loading: () => _buildLoadingState(),
+      error: (error, stack) => _buildErrorState(),
+      data: (visitors) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "Today's Visitors",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF1A1D1F),
-                letterSpacing: -0.3,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppTheme.accentBlue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.person, size: 14, color: AppTheme.accentBlue),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${visitors.length}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.accentBlue,
-                      letterSpacing: 0.1,
-                    ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Today's Visitors",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1D1F),
+                    letterSpacing: -0.3,
                   ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFFE8ECF4),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            children: visitors.asMap().entries.map((entry) {
-              final visitor = entry.value;
-              final isLast = entry.key == visitors.length - 1;
-
-              Color statusColor;
-              switch (visitor['status']) {
-                case 'Approved':
-                  statusColor = AppTheme.successGreen;
-                  break;
-                case 'Pending':
-                  statusColor = AppTheme.warningAmber;
-                  break;
-                default:
-                  statusColor = AppTheme.accentBlue;
-              }
-
-              return Column(
-                children: [
-                  Row(
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF4F5F7),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.person,
-                          color: const Color(0xFF6F767E),
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              visitor['name'] as String,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1A1D1F),
-                                letterSpacing: -0.1,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              visitor['time'] as String,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF6F767E),
-                                letterSpacing: 0.1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          visitor['status'] as String,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: statusColor,
-                            letterSpacing: 0.2,
-                          ),
+                      const Icon(Icons.person, size: 14, color: AppTheme.accentBlue),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${visitors.length}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.accentBlue,
+                          letterSpacing: 0.1,
                         ),
                       ),
                     ],
                   ),
-                  if (!isLast) ...[
-                    const SizedBox(height: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (visitors.isEmpty)
+              _buildEmptyState()
+            else
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE8ECF4),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Show only first 3 visitors
+                    ...visitors.take(3).toList().asMap().entries.map((entry) {
+                    final visitor = entry.value;
+                    final visibleList = visitors.take(3).toList();
+                    final isLast = entry.key == visibleList.length - 1;
+
+                    final expectedStart = DateTime.parse(visitor['expected_start']);
+                    final timeStr = DateFormat('hh:mm a').format(expectedStart);
+                    final name = visitor['visitor_name'] ?? 'Unknown';
+                    final purpose = visitor['purpose'] ?? 'Unknown';
+                    final status = visitor['status'] ?? 'pending';
+
+                    Color statusColor;
+                    String statusText;
+                    IconData statusIcon;
+
+                    switch (status) {
+                      case 'accepted':
+                        statusColor = AppTheme.successGreen;
+                        statusText = 'Approved';
+                        statusIcon = Icons.check_circle;
+                        break;
+                      case 'denied':
+                        statusColor = AppTheme.errorRed;
+                        statusText = 'Rejected';
+                        statusIcon = Icons.cancel;
+                        break;
+                      case 'pending':
+                        statusColor = AppTheme.warningAmber;
+                        statusText = 'Pending';
+                        statusIcon = Icons.schedule;
+                        break;
+                      case 'checked_in':
+                        statusColor = AppTheme.successGreen;
+                        statusText = 'In';
+                        statusIcon = Icons.login;
+                        break;
+                      case 'checked_out':
+                        statusColor = const Color(0xFF6F767E);
+                        statusText = 'Out';
+                        statusIcon = Icons.logout;
+                        break;
+                      default:
+                        statusColor = const Color(0xFF6F767E);
+                        statusText = 'Unknown';
+                        statusIcon = Icons.help_outline;
+                    }
+
+                    final purposeData = _getPurposeIconAndColor(purpose);
+                    final purposeIcon = purposeData['icon'] as IconData;
+                    final purposeColor = purposeData['color'] as Color;
+
+                    return Column(
+                      children: [
+                        Row(
+                          children: [
+                            // Purpose icon (like guard app)
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: purposeColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  purposeIcon,
+                                  color: purposeColor,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1A1D1F),
+                                      letterSpacing: -0.1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.primaryOrange.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                purpose,
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: AppTheme.primaryOrange,
+                                                  letterSpacing: 0.3,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              '· $timeStr',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                                color: Color(0xFF9CA3AF),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(width: 12),
+
+                            // Status
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: statusColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(statusIcon, size: 14, color: statusColor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    statusText,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: statusColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!isLast) ...[
+                          const SizedBox(height: 12),
+                          const Divider(color: Color(0xFFE8ECF4), height: 1),
+                          const SizedBox(height: 12),
+                        ],
+                      ],
+                    );
+                  }).toList(),
+
+                  // See All button (show if there are more than 3 visitors)
+                  if (visitors.length > 3) ...[
+                    const SizedBox(height: 16),
                     const Divider(color: Color(0xFFE8ECF4), height: 1),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const MyVisitorsScreen(),
+                            ),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          foregroundColor: AppTheme.primaryOrange,
+                        ),
+                        icon: const Icon(Icons.visibility, size: 18),
+                        label: const Text(
+                          'See All Visitors',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
-                ],
-              );
-            }).toList(),
-          ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
+      ),
+      child: const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
+      ),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(Icons.error_outline, size: 48, color: AppTheme.errorRed.withOpacity(0.5)),
+            const SizedBox(height: 12),
+            Text(
+              'Failed to load visitors',
+              style: TextStyle(
+                color: AppTheme.textGray.withOpacity(0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
+      ),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(Icons.event_available, size: 48, color: AppTheme.textGray.withOpacity(0.5)),
+            const SizedBox(height: 12),
+            Text(
+              'No visitors expected today',
+              style: TextStyle(
+                color: AppTheme.textGray.withOpacity(0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

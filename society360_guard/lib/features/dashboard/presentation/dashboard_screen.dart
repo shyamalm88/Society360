@@ -4,12 +4,255 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../config/theme.dart';
 import '../../../core/auth/auth_provider.dart';
+import '../../../core/api/api_client.dart';
+import '../../../core/services/visitor_service.dart';
+import '../../../core/services/app_initialization_service.dart';
+import '../../../core/services/socket_service.dart';
+import '../../../core/services/socket_service_provider.dart';
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver {
+  late final SocketService _socketService;
+
+  int _approvedCount = 0;
+  int _rejectedCount = 0;
+  int _autoRejectedCount = 0;
+  bool _isLoadingCounts = true;
+  bool _isInitialized = false;
+
+  // Today's Visitors
+  List<Map<String, dynamic>> _todaysVisitors = [];
+  bool _isLoadingTodaysVisitors = true;
+
+  // Recent Activity
+  List<Map<String, dynamic>> _recentActivities = [];
+  bool _isLoadingRecentActivity = true;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('🏠 Dashboard: initState called');
+    WidgetsBinding.instance.addObserver(this);
+    _initializeApp();
+    _fetchApprovalCounts();
+    _fetchTodaysVisitors();
+    _fetchRecentActivity();
+  }
+
+  /// Initialize app services (Socket.io, FCM) on first load
+  Future<void> _initializeApp() async {
+    try {
+      final appInitService = ref.read(appInitializationServiceProvider);
+      await appInitService.initialize();
+
+      // Set up Socket.io event listeners for real-time dashboard updates
+      // Cache it to avoid accessing ref in dispose()
+      _socketService = ref.read(socketServiceProvider);
+
+      // Add dashboard-specific listeners for approval events
+      _socketService.addApprovalListener(_handleApprovalEvent);
+
+      // Add dashboard-specific listeners for timeout events
+      _socketService.addTimeoutListener(_handleTimeoutEvent);
+
+      // Add dashboard-specific listeners for rejected visitors cleared events
+      _socketService.addRejectedClearedListener(_handleRejectedClearedEvent);
+
+      debugPrint('✅ Dashboard: Socket.io listeners registered');
+    } catch (e) {
+      debugPrint('❌ Dashboard: Error initializing app: $e');
+    }
+  }
+
+  /// Handle visitor approval/rejection events from Socket.io
+  void _handleApprovalEvent(Map<String, dynamic> data) {
+    debugPrint('🏠 Dashboard: Received visitor approval event: $data');
+    if (mounted) {
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+    }
+  }
+
+  /// Handle visitor timeout events from Socket.io
+  void _handleTimeoutEvent(Map<String, dynamic> data) {
+    debugPrint('🏠 Dashboard: Received visitor timeout event: $data');
+    if (mounted) {
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+    }
+  }
+
+  /// Handle rejected visitors cleared event from Socket.io
+  void _handleRejectedClearedEvent(Map<String, dynamic> data) {
+    debugPrint('🏠 Dashboard: Received rejected visitors cleared event: $data');
+    if (mounted) {
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+
+      // Show a snackbar to notify the user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🗑️ Rejected visitors cleared (${data['deleted_count']} removed)'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('🏠 Dashboard: didChangeDependencies called (isInitialized: $_isInitialized)');
+
+    // Only refresh on subsequent calls (when navigating back), not during initial build
+    if (_isInitialized) {
+      debugPrint('🔄 Dashboard: Refreshing counts (navigated back to screen)');
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+    } else {
+      _isInitialized = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    // Remove Socket.io listeners using cached instance (don't access ref after dispose)
+    _socketService.removeApprovalListener(_handleApprovalEvent);
+    _socketService.removeTimeoutListener(_handleTimeoutEvent);
+    _socketService.removeRejectedClearedListener(_handleRejectedClearedEvent);
+
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh counts when app comes back to foreground
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+    }
+  }
+
+  Future<void> _fetchApprovalCounts() async {
+    try {
+      debugPrint('🔄 Dashboard: Fetching approval counts...');
+      final apiClient = ref.read(apiClientProvider);
+      final visitorService = VisitorService(apiClient);
+
+      final approved = await visitorService.fetchVisitorsByStatus('accepted');
+      final rejected = await visitorService.fetchVisitorsByStatus('denied');
+
+      debugPrint('📊 Dashboard: Received ${approved.length} approved visitors');
+      debugPrint('📊 Dashboard: Approved visitors: ${approved.map((v) => v['visitor_name']).join(', ')}');
+      debugPrint('📊 Dashboard: Received ${rejected.length} rejected visitors');
+
+      final rejectedCount = rejected.where((v) => v['timeout'] != true).length;
+      final timeoutCount = rejected.where((v) => v['timeout'] == true).length;
+
+      debugPrint('📊 Dashboard: Rejected (manual): $rejectedCount');
+      debugPrint('📊 Dashboard: Rejected (timeout): $timeoutCount');
+
+      setState(() {
+        _approvedCount = approved.length;
+        _rejectedCount = rejectedCount;
+        _autoRejectedCount = timeoutCount;
+        _isLoadingCounts = false;
+      });
+
+      debugPrint('✅ Dashboard: Updated counts - Approved: $_approvedCount, Rejected: $_rejectedCount, Timeout: $_autoRejectedCount');
+    } catch (e) {
+      debugPrint('❌ Dashboard: Error fetching approval counts: $e');
+      setState(() => _isLoadingCounts = false);
+    }
+  }
+
+  Future<void> _fetchTodaysVisitors() async {
+    try {
+      debugPrint('🔄 Dashboard: Fetching today\'s visitors...');
+      final apiClient = ref.read(apiClientProvider);
+      final visitorService = VisitorService(apiClient);
+
+      // Get all visitors (pending, accepted, denied)
+      final allVisitors = await visitorService.fetchVisitors();
+
+      // Filter for today's visitors (based on expected_start date)
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final todayEnd = todayStart.add(const Duration(days: 1));
+
+      final todaysVisitorsList = allVisitors.where((visitor) {
+        final expectedStart = visitor['expected_start'];
+        if (expectedStart == null) return false;
+
+        final visitDateTime = DateTime.parse(expectedStart);
+        return visitDateTime.isAfter(todayStart) && visitDateTime.isBefore(todayEnd);
+      }).toList();
+
+      // Sort by expected time (latest first)
+      todaysVisitorsList.sort((a, b) {
+        final aTime = DateTime.parse(a['expected_start']);
+        final bTime = DateTime.parse(b['expected_start']);
+        return bTime.compareTo(aTime); // Descending order
+      });
+
+      debugPrint('📊 Dashboard: Found ${todaysVisitorsList.length} visitors for today');
+
+      setState(() {
+        _todaysVisitors = todaysVisitorsList;
+        _isLoadingTodaysVisitors = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Dashboard: Error fetching today\'s visitors: $e');
+      setState(() => _isLoadingTodaysVisitors = false);
+    }
+  }
+
+  Future<void> _fetchRecentActivity() async {
+    try {
+      debugPrint('🔄 Dashboard: Fetching recent activity...');
+      final apiClient = ref.read(apiClientProvider);
+      final visitorService = VisitorService(apiClient);
+
+      // Fetch recent visitors (last 10)
+      final allVisitors = await visitorService.fetchVisitors();
+
+      // Sort by updated_at (most recent first) and take last 10
+      final recentList = allVisitors.toList();
+      recentList.sort((a, b) {
+        final aTime = DateTime.parse(a['updated_at'] ?? a['created_at']);
+        final bTime = DateTime.parse(b['updated_at'] ?? b['created_at']);
+        return bTime.compareTo(aTime); // Descending order
+      });
+
+      final recentActivities = recentList.take(10).toList();
+
+      debugPrint('📊 Dashboard: Found ${recentActivities.length} recent activities');
+
+      setState(() {
+        _recentActivities = recentActivities;
+        _isLoadingRecentActivity = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Dashboard: Error fetching recent activity: $e');
+      setState(() => _isLoadingRecentActivity = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final currentDate = DateFormat('EEEE, MMMM d, y').format(DateTime.now());
     final currentTime = DateFormat('HH:mm').format(DateTime.now());
 
@@ -159,12 +402,12 @@ class DashboardScreen extends ConsumerWidget {
           children: [
             const SizedBox(height: 20),
 
-            // Stats Cards
-            _buildStatsRow(),
+            // 1. Visitor Approvals Summary Card
+            _buildApprovalsSummaryCard(context),
 
             const SizedBox(height: 24),
 
-            // Quick Actions
+            // 2. Quick Actions
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -195,41 +438,68 @@ class DashboardScreen extends ConsumerWidget {
 
             const SizedBox(height: 28),
 
-            // Recent Entries
+            // 3. Today's Visitors Section
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Recent Activity',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1D1F),
-                      letterSpacing: -0.2,
-                    ),
+                  Row(
+                    children: [
+                      const Text(
+                        'Today\'s Visitors',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1D1F),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryBlue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${_todaysVisitors.length}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  TextButton.icon(
-                    onPressed: () {},
+                  TextButton(
+                    onPressed: () {
+                      context.push('/all-visitors');
+                    },
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     ),
-                    icon: const Icon(Icons.tune, size: 16),
-                    label: const Text(
-                      'Filter',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'See All',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryOrange,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_ios, size: 12, color: AppTheme.primaryOrange),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
-
-            _buildRecentEntriesList(context),
+            _buildTodaysVisitorsList(context),
 
             const SizedBox(height: 24),
           ],
@@ -238,73 +508,150 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _buildApprovalsSummaryCard(BuildContext context) {
+    final approvedCount = _isLoadingCounts ? 0 : _approvedCount;
+    final rejectedCount = _isLoadingCounts ? 0 : _rejectedCount;
+    final autoRejectedCount = _isLoadingCounts ? 0 : _autoRejectedCount;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildStatCard(
-              icon: Icons.login,
-              label: 'Checked In',
-              value: '12',
-              color: const Color(0xFF10B981),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => context.push('/visitor-approvals'),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.successGreen.withOpacity(0.05),
+                  AppTheme.primaryOrange.withOpacity(0.02),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.successGreen.withOpacity(0.2),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successGreen.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.how_to_vote,
+                        color: AppTheme.successGreen,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Visitor Approvals',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1D1F),
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Tap to view all approvals',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF6F767E),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      size: 16,
+                      color: Color(0xFF6F767E),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildApprovalCountBadge(
+                        label: 'Approved',
+                        count: approvedCount,
+                        icon: Icons.check_circle,
+                        color: AppTheme.successGreen,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildApprovalCountBadge(
+                        label: 'Rejected',
+                        count: rejectedCount,
+                        icon: Icons.cancel,
+                        color: AppTheme.errorRed,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildApprovalCountBadge(
+                        label: 'Timeout',
+                        count: autoRejectedCount,
+                        icon: Icons.timer_off,
+                        color: AppTheme.warningAmber,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildStatCard(
-              icon: Icons.access_time,
-              label: 'Pending',
-              value: '3',
-              color: const Color(0xFFF59E0B),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildStatCard(
-              icon: Icons.done_all,
-              label: 'Today Total',
-              value: '47',
-              color: const Color(0xFF3B82F6),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildStatCard({
-    required IconData icon,
+  Widget _buildApprovalCountBadge({
     required String label,
-    required String value,
+    required int count,
+    required IconData icon,
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 20, color: color),
-          ),
-          const SizedBox(height: 12),
+          Icon(icon, size: 18, color: color),
+          const SizedBox(height: 6),
           Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
+            count.toString(),
+            style: TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1D1F),
+              color: color,
               height: 1,
             ),
           ),
@@ -312,13 +659,292 @@ class DashboardScreen extends ConsumerWidget {
           Text(
             label,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: FontWeight.w600,
               color: Color(0xFF6F767E),
-              letterSpacing: 0.2,
+              letterSpacing: 0.1,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTodaysVisitorsList(BuildContext context) {
+    if (_isLoadingTodaysVisitors) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_todaysVisitors.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
+          ),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.event_available, size: 48, color: AppTheme.textGray.withOpacity(0.5)),
+                const SizedBox(height: 12),
+                Text(
+                  'No visitors expected today',
+                  style: TextStyle(
+                    color: AppTheme.textGray.withOpacity(0.7),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Show max 3 visitors on dashboard
+    final displayCount = _todaysVisitors.length > 3 ? 3 : _todaysVisitors.length;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: displayCount,
+        itemBuilder: (context, index) {
+          final visitor = _todaysVisitors[index];
+          final expectedStart = DateTime.parse(visitor['expected_start']);
+          final timeStr = DateFormat('hh:mm a').format(expectedStart);
+
+          return _buildTodaysVisitorCard(
+            context: context,
+            time: timeStr,
+            name: visitor['visitor_name'] ?? 'Unknown',
+            purpose: visitor['purpose'] ?? 'Unknown',
+            flat: visitor['flat_number'] ?? 'N/A',
+            status: visitor['status'] ?? 'pending',
+          );
+        },
+      ),
+    );
+  }
+
+  /// Get icon and color based on visitor purpose (matches visitor entry dropdown exactly)
+  Map<String, dynamic> _getPurposeIconAndColor(String purpose) {
+    final purposeLower = purpose.toLowerCase();
+
+    if (purposeLower.contains('delivery') && !purposeLower.contains('food')) {
+      return {'icon': Icons.local_shipping, 'color': const Color(0xFFFF6B35)};
+    } else if (purposeLower.contains('guest')) {
+      return {'icon': Icons.person, 'color': const Color(0xFF4ECDC4)};
+    } else if (purposeLower.contains('cab') || purposeLower.contains('taxi')) {
+      return {'icon': Icons.local_taxi, 'color': const Color(0xFFF7B801)};
+    } else if (purposeLower.contains('service')) {
+      return {'icon': Icons.build, 'color': const Color(0xFF95E1D3)};
+    } else if (purposeLower.contains('food')) {
+      return {'icon': Icons.restaurant, 'color': const Color(0xFFFF8B94)};
+    } else if (purposeLower.contains('courier')) {
+      return {'icon': Icons.mail, 'color': const Color(0xFF9B59B6)};
+    } else if (purposeLower.contains('doctor')) {
+      return {'icon': Icons.medical_services, 'color': const Color(0xFF3498DB)};
+    } else if (purposeLower.contains('plumber')) {
+      return {'icon': Icons.plumbing, 'color': const Color(0xFF2ECC71)};
+    } else if (purposeLower.contains('electrician')) {
+      return {'icon': Icons.electrical_services, 'color': const Color(0xFFE74C3C)};
+    } else if (purposeLower.contains('carpenter')) {
+      return {'icon': Icons.carpenter, 'color': const Color(0xFF8E44AD)};
+    } else if (purposeLower.contains('cleaning')) {
+      return {'icon': Icons.cleaning_services, 'color': const Color(0xFF1ABC9C)};
+    } else {
+      return {'icon': Icons.more_horiz, 'color': const Color(0xFF7F8C8D)};
+    }
+  }
+
+  Widget _buildTodaysVisitorCard({
+    required BuildContext context,
+    required String time,
+    required String name,
+    required String purpose,
+    required String flat,
+    required String status,
+  }) {
+    Color statusColor;
+    String statusText;
+    IconData statusIcon;
+
+    switch (status) {
+      case 'accepted':
+        statusColor = AppTheme.successGreen;
+        statusText = 'Approved';
+        statusIcon = Icons.check_circle;
+        break;
+      case 'denied':
+        statusColor = AppTheme.errorRed;
+        statusText = 'Rejected';
+        statusIcon = Icons.cancel;
+        break;
+      case 'pending':
+        statusColor = AppTheme.warningAmber;
+        statusText = 'Pending';
+        statusIcon = Icons.schedule;
+        break;
+      case 'checked_in':
+        statusColor = AppTheme.successGreen;
+        statusText = 'In';
+        statusIcon = Icons.login;
+        break;
+      case 'checked_out':
+        statusColor = const Color(0xFF6F767E);
+        statusText = 'Out';
+        statusIcon = Icons.logout;
+        break;
+      default:
+        statusColor = const Color(0xFF6F767E);
+        statusText = 'Unknown';
+        statusIcon = Icons.help_outline;
+    }
+
+    final purposeData = _getPurposeIconAndColor(purpose);
+    final purposeIcon = purposeData['icon'] as IconData;
+    final purposeColor = purposeData['color'] as Color;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showVisitorDetails(context, name, purpose, flat),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Avatar with purpose icon
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: purposeColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      purposeIcon,
+                      color: purposeColor,
+                      size: 24,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                // Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1D1F),
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryOrange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    purpose,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.primaryOrange,
+                                      letterSpacing: 0.3,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    flat,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF6F767E),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '· $time',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF9CA3AF),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                // Status
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 14, color: statusColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -333,18 +959,18 @@ class DashboardScreen extends ConsumerWidget {
         'onTap': () => context.push('/visitor-entry'),
       },
       {
+        'icon': Icons.check_circle_outline,
+        'label': 'Approvals',
+        'subtitle': 'View status',
+        'color': const Color(0xFF10B981),
+        'onTap': () => context.push('/visitor-approvals'),
+      },
+      {
         'icon': Icons.qr_code_scanner_outlined,
         'label': 'Scan QR',
         'subtitle': 'Quick check-in',
-        'color': const Color(0xFF10B981),
-        'onTap': () => _showQRScanner(context),
-      },
-      {
-        'icon': Icons.star_border,
-        'label': 'Frequent',
-        'subtitle': 'View regulars',
         'color': const Color(0xFFF59E0B),
-        'onTap': () => _showFrequentVisitors(context),
+        'onTap': () => _showQRScanner(context),
       },
       {
         'icon': Icons.search,
@@ -428,56 +1054,62 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildRecentEntriesList(BuildContext context) {
-    final recentEntries = [
-      {
-        'time': '10:45 AM',
-        'name': 'Rajesh Kumar',
-        'purpose': 'Delivery',
-        'flat': 'A-101',
-        'status': 'checked_in',
-        'isFrequent': false,
-      },
-      {
-        'time': '09:30 AM',
-        'name': 'Priya Sharma',
-        'purpose': 'Guest',
-        'flat': 'B-205',
-        'status': 'checked_out',
-        'isFrequent': true,
-      },
-      {
-        'time': '08:15 AM',
-        'name': 'Amit Patel',
-        'purpose': 'Service',
-        'flat': 'A-304',
-        'status': 'checked_out',
-        'isFrequent': false,
-      },
-      {
-        'time': 'Yesterday',
-        'name': 'Sanjay Reddy',
-        'purpose': 'Cab',
-        'flat': 'B-102',
-        'status': 'checked_out',
-        'isFrequent': true,
-      },
-    ];
+    if (_isLoadingRecentActivity) {
+      return const Padding(
+        padding: EdgeInsets.all(40),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_recentActivities.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.history, size: 48, color: AppTheme.textGray.withOpacity(0.5)),
+              const SizedBox(height: 12),
+              Text(
+                'No recent activity',
+                style: TextStyle(
+                  color: AppTheme.textGray.withOpacity(0.7),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: recentEntries.length,
+      itemCount: _recentActivities.length,
       itemBuilder: (context, index) {
-        final entry = recentEntries[index];
+        final visitor = _recentActivities[index];
+        final updatedAt = DateTime.parse(visitor['updated_at'] ?? visitor['created_at']);
+        final now = DateTime.now();
+        final difference = now.difference(updatedAt);
+
+        String timeStr;
+        if (difference.inMinutes < 60) {
+          timeStr = '${difference.inMinutes}m ago';
+        } else if (difference.inHours < 24) {
+          timeStr = '${difference.inHours}h ago';
+        } else {
+          timeStr = '${difference.inDays}d ago';
+        }
+
         return _buildVisitorCard(
           context: context,
-          time: entry['time']! as String,
-          name: entry['name']! as String,
-          purpose: entry['purpose']! as String,
-          flat: entry['flat']! as String,
-          status: entry['status']! as String,
-          isFrequent: entry['isFrequent'] as bool,
+          time: timeStr,
+          name: visitor['visitor_name'] ?? 'Unknown',
+          purpose: visitor['purpose'] ?? 'Unknown',
+          flat: visitor['flat_number'] ?? 'N/A',
+          status: visitor['status'] ?? 'pending',
+          isFrequent: false,
         );
       },
     );
@@ -496,14 +1128,36 @@ class DashboardScreen extends ConsumerWidget {
     String statusText;
     IconData statusIcon;
 
-    if (status == 'checked_in') {
-      statusColor = const Color(0xFF10B981);
-      statusText = 'In';
-      statusIcon = Icons.login;
-    } else {
-      statusColor = const Color(0xFF6F767E);
-      statusText = 'Out';
-      statusIcon = Icons.logout;
+    switch (status) {
+      case 'checked_in':
+        statusColor = const Color(0xFF10B981);
+        statusText = 'In';
+        statusIcon = Icons.login;
+        break;
+      case 'checked_out':
+        statusColor = const Color(0xFF6F767E);
+        statusText = 'Out';
+        statusIcon = Icons.logout;
+        break;
+      case 'accepted':
+        statusColor = AppTheme.successGreen;
+        statusText = 'Approved';
+        statusIcon = Icons.check_circle;
+        break;
+      case 'denied':
+        statusColor = AppTheme.errorRed;
+        statusText = 'Rejected';
+        statusIcon = Icons.cancel;
+        break;
+      case 'pending':
+        statusColor = AppTheme.warningAmber;
+        statusText = 'Pending';
+        statusIcon = Icons.schedule;
+        break;
+      default:
+        statusColor = const Color(0xFF6F767E);
+        statusText = 'Unknown';
+        statusIcon = Icons.help_outline;
     }
 
     return Container(

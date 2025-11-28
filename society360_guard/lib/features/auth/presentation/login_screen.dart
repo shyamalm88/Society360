@@ -77,80 +77,103 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header Section
-            Expanded(
-              flex: 2,
-              child: Center(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppTheme.backgroundGradient,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header Section with Gradient
+              Expanded(
+                flex: 2,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // App Logo/Icon with Gradient & Shadow
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          gradient: AppTheme.primaryGradient,
+                          shape: BoxShape.circle,
+                          boxShadow: AppTheme.elevatedShadow,
+                        ),
+                        child: const Icon(
+                          Icons.security_rounded,
+                          size: 64,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Title with improved typography
+                      Text(
+                        'Society360',
+                        style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1.0,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryOrangeLight.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppTheme.primaryOrangeLight.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'Guard Access Portal',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: AppTheme.textGray,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // PIN Dots Section
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // App Logo/Icon
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryOrange,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.security,
-                        size: 56,
-                        color: Colors.white,
-                      ),
+                    Text(
+                      'Enter Your PIN',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AppTheme.textGray,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                     const SizedBox(height: 24),
 
-                    // Title
-                    Text(
-                      'Society360',
-                      style: Theme.of(context).textTheme.displayMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Guard Access',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: AppTheme.textGray,
-                          ),
-                    ),
+                    // PIN Dots with shake animation
+                    _buildPinDots().animate(target: _isShaking ? 1 : 0).shake(
+                          duration: 500.ms,
+                          hz: 5,
+                          curve: Curves.easeInOut,
+                        ),
                   ],
                 ),
               ),
-            ),
 
-            // PIN Dots Section
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32),
-              child: Column(
-                children: [
-                  Text(
-                    'Enter Your PIN',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppTheme.textGray,
-                        ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // PIN Dots with shake animation
-                  _buildPinDots().animate(target: _isShaking ? 1 : 0).shake(
-                        duration: 500.ms,
-                        hz: 5,
-                        curve: Curves.easeInOut,
-                      ),
-                ],
+              // Keypad Section
+              Expanded(
+                flex: 3,
+                child: _buildNumericKeypad(),
               ),
-            ),
 
-            // Keypad Section
-            Expanded(
-              flex: 3,
-              child: _buildNumericKeypad(),
-            ),
-
-            const SizedBox(height: 24),
-          ],
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -165,15 +188,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           final isFilled = index < _enteredPin.length;
           return Container(
             margin: const EdgeInsets.symmetric(horizontal: 8),
-            width: 20,
-            height: 20,
+            width: 24,
+            height: 24,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isFilled ? AppTheme.primaryOrange : Colors.transparent,
+              gradient: isFilled ? AppTheme.primaryGradient : null,
+              color: isFilled ? null : Colors.transparent,
               border: Border.all(
-                color: isFilled ? AppTheme.primaryOrange : AppTheme.textGray,
-                width: 2,
+                color: isFilled ? Colors.transparent : AppTheme.textLight,
+                width: 2.5,
               ),
+              boxShadow: isFilled
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.primaryOrange.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
             ),
           );
         },
@@ -215,7 +248,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           return Expanded(
             child: _buildKeypadButton(
               child: const Icon(
-                Icons.backspace_outlined,
+                Icons.backspace_rounded,
                 size: 28,
                 color: AppTheme.textDark,
               ),
@@ -228,7 +261,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: _buildKeypadButton(
             child: Text(
               number,
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             onPressed: () => _onNumberPressed(number),
           ),
@@ -243,14 +278,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }) {
     return Container(
       margin: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: AppTheme.cardShadow,
+      ),
       child: Material(
         color: AppTheme.surfaceCard,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
           onTap: _isLoading ? null : onPressed,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
+          splashColor: AppTheme.primaryOrangeLight.withOpacity(0.2),
+          highlightColor: AppTheme.primaryOrangeLight.withOpacity(0.1),
           child: Container(
-            height: 70,
+            height: 72,
             alignment: Alignment.center,
             child: child,
           ),

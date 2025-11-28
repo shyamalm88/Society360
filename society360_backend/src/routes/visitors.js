@@ -1,27 +1,27 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { query, getClient } = require('../config/database');
-const { verifyFirebaseToken, requireRole } = require('../middleware/auth');
-const logger = require('../config/logger');
-const notificationService = require('../services/notification_service');
+const { query, getClient } = require("../config/database");
+const { verifyFirebaseToken, requireRole } = require("../middleware/auth");
+const logger = require("../config/logger");
+const notificationService = require("../services/notification_service");
 
 /**
  * POST /visitors
  * Create a new visitor entry (typically by guard)
  * Emits Socket.io event + sends FCM push notification to residents
  */
-router.post('/', verifyFirebaseToken, async (req, res) => {
+router.post("/", verifyFirebaseToken, async (req, res) => {
   const client = await getClient();
 
   try {
-    logger.info('📥 POST /visitors - Visitor creation request received', {
+    logger.info("📥 POST /visitors - Visitor creation request received", {
       body: req.body,
       user_id: req.user?.id,
       user_phone: req.user?.phone,
-      ip: req.ip
+      ip: req.ip,
     });
 
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
     const {
       visitor_name,
@@ -37,42 +37,42 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
       idempotency_key,
     } = req.body;
 
-    logger.info('📋 Extracted fields', {
+    logger.info("📋 Extracted fields", {
       visitor_name,
       phone,
       flat_id,
       purpose,
       invited_by,
-      has_idempotency_key: !!idempotency_key
+      has_idempotency_key: !!idempotency_key,
     });
 
     // Validate required fields
     if (!visitor_name || !phone || !flat_id) {
-      logger.warn('❌ Validation failed - missing required fields', {
+      logger.warn("❌ Validation failed - missing required fields", {
         has_visitor_name: !!visitor_name,
         has_phone: !!phone,
-        has_flat_id: !!flat_id
+        has_flat_id: !!flat_id,
       });
-      await client.query('ROLLBACK');
+      await client.query("ROLLBACK");
       return res.status(400).json({
         success: false,
-        error: 'visitor_name, phone, and flat_id are required',
+        error: "visitor_name, phone, and flat_id are required",
       });
     }
 
     // Check idempotency
     if (idempotency_key) {
       const existingResult = await client.query(
-        'SELECT * FROM visitors WHERE idempotency_key = $1',
+        "SELECT * FROM visitors WHERE idempotency_key = $1",
         [idempotency_key]
       );
 
       if (existingResult.rows.length > 0) {
-        await client.query('COMMIT');
+        await client.query("COMMIT");
         return res.json({
           success: true,
           data: existingResult.rows[0],
-          message: 'Visitor already exists (idempotent)',
+          message: "Visitor already exists (idempotent)",
         });
       }
     }
@@ -94,12 +94,12 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
         id_type || null,
         id_number || null,
         vehicle_no || null,
-        purpose || 'guest',
+        purpose || "guest",
         invited_by || req.user.id,
         flat_id,
         expected_start || new Date(),
         expected_end || null,
-        'pending',
+        "pending",
         approvalDeadline,
         idempotency_key || null,
       ]
@@ -132,10 +132,16 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
     await client.query(
       `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, payload, created_at)
        VALUES ($1, $2, $3, $4, $5, now())`,
-      [req.user.id, 'visitor_created', 'visitor', visitor.id, JSON.stringify({ visitor_name, flat_id, purpose })]
+      [
+        req.user.id,
+        "visitor_created",
+        "visitor",
+        visitor.id,
+        JSON.stringify({ visitor_name, flat_id, purpose }),
+      ]
     );
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
 
     // Prepare notification data
     const visitorNotificationData = {
@@ -154,7 +160,7 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
     };
 
     // Emit Socket.io event to flat room (real-time for active users)
-    const io = req.app.get('io');
+    const io = req.app.get("io");
     const flatRoomName = `flat:${flat_id}`;
 
     logger.info(`📡 Emitting visitor_request event`, {
@@ -162,21 +168,23 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
       visitor_id: visitor.id,
       visitor_name: visitor.visitor_name,
       flat_number: flatDetails?.flat_number,
-      connected_sockets: io.sockets.adapter.rooms.get(flatRoomName)?.size || 0
+      connected_sockets: io.sockets.adapter.rooms.get(flatRoomName)?.size || 0,
     });
 
-    io.to(flatRoomName).emit('visitor_request', visitorNotificationData);
+    io.to(flatRoomName).emit("visitor_request", visitorNotificationData);
 
     logger.info(`✅ Socket.io event emitted to room: ${flatRoomName}`, {
-      data: visitorNotificationData
+      data: visitorNotificationData,
     });
 
     // Send FCM push notification (for users not actively using app)
-    notificationService.notifyVisitorRequest(flat_id, {
-      visitor_id: visitor.id,
-      visitor_name: visitor.visitor_name,
-      purpose: visitor.purpose,
-    }).catch(err => logger.error('Failed to send FCM notification:', err));
+    notificationService
+      .notifyVisitorRequest(flat_id, {
+        visitor_id: visitor.id,
+        visitor_name: visitor.visitor_name,
+        purpose: visitor.purpose,
+      })
+      .catch((err) => logger.error("Failed to send FCM notification:", err));
 
     logger.info(`✅ Visitor created: ${visitor.id}, room: ${flatRoomName}`);
 
@@ -188,11 +196,11 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
       },
     });
   } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Error creating visitor:', error);
+    await client.query("ROLLBACK");
+    logger.error("Error creating visitor:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create visitor',
+      error: "Failed to create visitor",
     });
   } finally {
     client.release();
@@ -203,7 +211,7 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
  * GET /visitors
  * Get visitors with optional filters
  */
-router.get('/', verifyFirebaseToken, async (req, res) => {
+router.get("/", verifyFirebaseToken, async (req, res) => {
   try {
     const { flat_id, status, date_from, date_to } = req.query;
 
@@ -215,7 +223,7 @@ router.get('/', verifyFirebaseToken, async (req, res) => {
       LEFT JOIN flats f ON v.flat_id = f.id
       LEFT JOIN blocks b ON f.block_id = b.id
       LEFT JOIN users u ON v.invited_by = u.id
-      WHERE 1=1
+      WHERE v.deleted_at IS NULL
     `;
     const params = [];
 
@@ -239,7 +247,7 @@ router.get('/', verifyFirebaseToken, async (req, res) => {
       queryText += ` AND v.created_at <= $${params.length}`;
     }
 
-    queryText += ' ORDER BY v.created_at DESC LIMIT 100';
+    queryText += " ORDER BY v.created_at DESC LIMIT 100";
 
     const result = await query(queryText, params);
 
@@ -248,10 +256,10 @@ router.get('/', verifyFirebaseToken, async (req, res) => {
       data: result.rows,
     });
   } catch (error) {
-    logger.error('Error fetching visitors:', error);
+    logger.error("Error fetching visitors:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch visitors',
+      error: "Failed to fetch visitors",
     });
   }
 });
@@ -260,14 +268,14 @@ router.get('/', verifyFirebaseToken, async (req, res) => {
  * GET /visitors/pending-count
  * Get count of pending visitor requests for a specific flat
  */
-router.get('/pending-count', verifyFirebaseToken, async (req, res) => {
+router.get("/pending-count", verifyFirebaseToken, async (req, res) => {
   try {
     const { flat_id } = req.query;
 
     if (!flat_id) {
       return res.status(400).json({
         success: false,
-        error: 'flat_id is required',
+        error: "flat_id is required",
       });
     }
 
@@ -286,10 +294,10 @@ router.get('/pending-count', verifyFirebaseToken, async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error('Error fetching pending count:', error);
+    logger.error("Error fetching pending count:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch pending count',
+      error: "Failed to fetch pending count",
     });
   }
 });
@@ -299,17 +307,17 @@ router.get('/pending-count', verifyFirebaseToken, async (req, res) => {
  * Resident approves or denies visitor request
  * Emits Socket.io event + sends FCM push notification to guards
  */
-router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
+router.post("/:id/respond", verifyFirebaseToken, async (req, res) => {
   const client = await getClient();
 
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
     const visitorId = req.params.id;
     const { decision, note } = req.body;
 
-    if (!decision || !['accept', 'deny'].includes(decision)) {
-      await client.query('ROLLBACK');
+    if (!decision || !["accept", "deny"].includes(decision)) {
+      await client.query("ROLLBACK");
       return res.status(400).json({
         success: false,
         error: 'decision must be either "accept" or "deny"',
@@ -328,18 +336,18 @@ router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
     );
 
     if (visitorResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await client.query("ROLLBACK");
       return res.status(404).json({
         success: false,
-        error: 'Visitor not found',
+        error: "Visitor not found",
       });
     }
 
     const visitor = visitorResult.rows[0];
 
     // Check if already responded
-    if (visitor.status !== 'pending') {
-      await client.query('ROLLBACK');
+    if (visitor.status !== "pending") {
+      await client.query("ROLLBACK");
       return res.status(400).json({
         success: false,
         error: `Visitor already ${visitor.status}`,
@@ -347,19 +355,19 @@ router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
     }
 
     // Update visitor status
-    const newStatus = decision === 'accept' ? 'accepted' : 'denied';
+    const newStatus = decision === "accept" ? "accepted" : "denied";
     await client.query(
-      'UPDATE visitors SET status = $1, updated_at = now() WHERE id = $2',
+      "UPDATE visitors SET status = $1, updated_at = now() WHERE id = $2",
       [newStatus, visitorId]
     );
 
     // Get user roles
     const rolesResult = await client.query(
-      'SELECT role FROM role_assignments WHERE user_id = $1 AND revoked = false',
+      "SELECT role FROM role_assignments WHERE user_id = $1 AND revoked = false",
       [req.user.id]
     );
 
-    const userRole = rolesResult.rows[0]?.role || 'resident';
+    const userRole = rolesResult.rows[0]?.role || "resident";
 
     // Insert approval record
     await client.query(
@@ -372,10 +380,16 @@ router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
     await client.query(
       `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, payload, created_at)
        VALUES ($1, $2, $3, $4, $5, now())`,
-      [req.user.id, 'visitor_responded', 'visitor', visitorId, JSON.stringify({ decision, note })]
+      [
+        req.user.id,
+        "visitor_responded",
+        "visitor",
+        visitorId,
+        JSON.stringify({ decision, note }),
+      ]
     );
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
 
     // Prepare approval data
     const approvalData = {
@@ -389,13 +403,16 @@ router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
     };
 
     // Emit Socket.io event to guard/society room
-    const io = req.app.get('io');
+    const io = req.app.get("io");
     const guardRoomName = `society:${visitor.society_id}`;
-    io.to(guardRoomName).emit('request_approved', approvalData);
+    io.to(guardRoomName).emit("request_approved", approvalData);
 
     // Send FCM push notification to guards
-    notificationService.notifyGuardApproval(visitor.society_id, approvalData)
-      .catch(err => logger.error('Failed to send FCM notification:', err));
+    notificationService
+      .notifyGuardApproval(visitor.society_id, approvalData, {
+        excludeUserId: req.user.id,
+      }) // Exclude the approver from notification
+      .catch((err) => logger.error("Failed to send FCM notification:", err));
 
     logger.info(`✅ Visitor ${decision}: ${visitorId}, room: ${guardRoomName}`);
 
@@ -408,11 +425,11 @@ router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
       },
     });
   } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Error responding to visitor:', error);
+    await client.query("ROLLBACK");
+    logger.error("Error responding to visitor:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to respond to visitor request',
+      error: "Failed to respond to visitor request",
     });
   } finally {
     client.release();
@@ -423,90 +440,109 @@ router.post('/:id/respond', verifyFirebaseToken, async (req, res) => {
  * POST /visitors/:id/guard-respond
  * Guard manually approves or denies visitor (after timeout or manual verification)
  */
-router.post('/:id/guard-respond', verifyFirebaseToken, requireRole(['guard', 'society_admin']), async (req, res) => {
-  const client = await getClient();
+router.post(
+  "/:id/guard-respond",
+  verifyFirebaseToken,
+  requireRole(["guard", "society_admin"]),
+  async (req, res) => {
+    const client = await getClient();
 
-  try {
-    await client.query('BEGIN');
+    try {
+      await client.query("BEGIN");
 
-    const visitorId = req.params.id;
-    const { decision, note } = req.body;
+      const visitorId = req.params.id;
+      const { decision, note } = req.body;
 
-    if (!decision || !['accept', 'deny'].includes(decision)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        success: false,
-        error: 'decision must be either "accept" or "deny"',
-      });
-    }
+      if (!decision || !["accept", "deny"].includes(decision)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          success: false,
+          error: 'decision must be either "accept" or "deny"',
+        });
+      }
 
-    // Get visitor details
-    const visitorResult = await client.query(
-      'SELECT * FROM visitors WHERE id = $1',
-      [visitorId]
-    );
+      // Get visitor details
+      const visitorResult = await client.query(
+        "SELECT * FROM visitors WHERE id = $1",
+        [visitorId]
+      );
 
-    if (visitorResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        success: false,
-        error: 'Visitor not found',
-      });
-    }
+      if (visitorResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          success: false,
+          error: "Visitor not found",
+        });
+      }
 
-    const visitor = visitorResult.rows[0];
+      const visitor = visitorResult.rows[0];
 
-    // Update visitor status
-    const newStatus = decision === 'accept' ? 'accepted' : 'denied';
-    await client.query(
-      'UPDATE visitors SET status = $1, auto_approved = $2, updated_at = now() WHERE id = $3',
-      [newStatus, decision === 'accept', visitorId]
-    );
+      // Update visitor status
+      const newStatus = decision === "accept" ? "accepted" : "denied";
+      await client.query(
+        "UPDATE visitors SET status = $1, auto_approved = $2, updated_at = now() WHERE id = $3",
+        [newStatus, decision === "accept", visitorId]
+      );
 
-    // Insert approval record
-    await client.query(
-      `INSERT INTO visitor_approvals (visitor_id, approver_user_id, approver_role, decision, note, decided_at)
+      // Insert approval record
+      await client.query(
+        `INSERT INTO visitor_approvals (visitor_id, approver_user_id, approver_role, decision, note, decided_at)
        VALUES ($1, $2, $3, $4, $5, now())`,
-      [visitorId, req.user.id, 'guard', decision, note || 'Manual guard verification']
-    );
+        [
+          visitorId,
+          req.user.id,
+          "guard",
+          decision,
+          note || "Manual guard verification",
+        ]
+      );
 
-    // Log audit
-    await client.query(
-      `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, payload, created_at)
+      // Log audit
+      await client.query(
+        `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, payload, created_at)
        VALUES ($1, $2, $3, $4, $5, now())`,
-      [req.user.id, 'visitor_guard_override', 'visitor', visitorId, JSON.stringify({ decision, note })]
-    );
+        [
+          req.user.id,
+          "visitor_guard_override",
+          "visitor",
+          visitorId,
+          JSON.stringify({ decision, note }),
+        ]
+      );
 
-    await client.query('COMMIT');
+      await client.query("COMMIT");
 
-    logger.info(`✅ Guard ${decision} visitor: ${visitorId} by ${req.user.name}`);
+      logger.info(
+        `✅ Guard ${decision} visitor: ${visitorId} by ${req.user.name}`
+      );
 
-    res.json({
-      success: true,
-      data: {
-        visitor_id: visitorId,
-        decision,
-        status: newStatus,
-        manual_approval: true,
-      },
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Error in guard response:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process guard response',
-    });
-  } finally {
-    client.release();
+      res.json({
+        success: true,
+        data: {
+          visitor_id: visitorId,
+          decision,
+          status: newStatus,
+          manual_approval: true,
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      logger.error("Error in guard response:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to process guard response",
+      });
+    } finally {
+      client.release();
+    }
   }
-});
+);
 
 /**
  * POST /visitors/:id/send-invite
  * Send invite notification to visitor (SMS/WhatsApp)
  */
-router.post('/:id/send-invite', verifyFirebaseToken, async (req, res) => {
+router.post("/:id/send-invite", verifyFirebaseToken, async (req, res) => {
   try {
     const visitorId = req.params.id;
 
@@ -525,7 +561,7 @@ router.post('/:id/send-invite', verifyFirebaseToken, async (req, res) => {
     if (visitorResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: 'Visitor not found',
+        error: "Visitor not found",
       });
     }
 
@@ -537,24 +573,24 @@ router.post('/:id/send-invite', verifyFirebaseToken, async (req, res) => {
        VALUES ($1, $2, $3, $4, now())`,
       [
         null,
-        'sms',
+        "sms",
         JSON.stringify({
           phone: visitor.phone,
           message: `You have been invited to ${visitor.society_name}, ${visitor.block_name} - ${visitor.flat_number}`,
         }),
-        'pending',
+        "pending",
       ]
     );
 
     res.json({
       success: true,
-      message: 'Invite sent successfully',
+      message: "Invite sent successfully",
     });
   } catch (error) {
-    logger.error('Error sending invite:', error);
+    logger.error("Error sending invite:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to send invite',
+      error: "Failed to send invite",
     });
   }
 });
@@ -563,7 +599,7 @@ router.post('/:id/send-invite', verifyFirebaseToken, async (req, res) => {
  * GET /visitors/pending
  * Get pending visitor requests for the current user's flats
  */
-router.get('/pending', verifyFirebaseToken, async (req, res) => {
+router.get("/pending", verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -587,20 +623,113 @@ router.get('/pending', verifyFirebaseToken, async (req, res) => {
       [userId]
     );
 
-    logger.info(`✅ Fetched ${result.rows.length} pending visitor(s) for user ${userId}`);
+    logger.info(
+      `✅ Fetched ${result.rows.length} pending visitor(s) for user ${userId}`
+    );
 
     res.json({
       success: true,
       data: result.rows,
-      count: result.rows.length
+      count: result.rows.length,
     });
-
   } catch (error) {
-    logger.error('Error fetching pending visitors:', error);
+    logger.error("Error fetching pending visitors:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch pending visitors'
+      error: "Failed to fetch pending visitors",
     });
+  }
+});
+
+/**
+ * DELETE /visitors/rejected
+ * Soft delete all rejected visitors for the authenticated user's society
+ * Only accessible by guards
+ */
+router.delete("/rejected", verifyFirebaseToken, async (req, res) => {
+  const client = await getClient();
+
+  try {
+    await client.query("BEGIN");
+
+    logger.info("🗑️ DELETE /visitors/rejected - Soft deleting rejected visitors", {
+      user_id: req.user?.id,
+      user_phone: req.user?.phone,
+      ip: req.ip,
+    });
+
+    // Get the guard's society ID
+    const guardResult = await client.query(
+      "SELECT society_id FROM guards WHERE user_id = $1",
+      [req.user.id]
+    );
+
+    if (guardResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        success: false,
+        error: "Guard not found",
+      });
+    }
+
+    const societyId = guardResult.rows[0].society_id;
+
+    // Soft delete rejected visitors by setting deleted_at timestamp
+    // Join through flats -> blocks -> complexes to get society_id
+    const result = await client.query(
+      `UPDATE visitors v
+       SET deleted_at = NOW()
+       FROM flats f
+       JOIN blocks b ON f.block_id = b.id
+       JOIN complexes c ON b.complex_id = c.id
+       WHERE v.flat_id = f.id
+       AND v.status = 'denied'
+       AND c.society_id = $1
+       AND v.deleted_at IS NULL
+       RETURNING v.id`,
+      [societyId]
+    );
+
+    await client.query("COMMIT");
+
+    logger.info(`✅ Soft deleted ${result.rowCount} rejected visitors for society ${societyId}`);
+
+    // Emit Socket.io event to notify guards that rejected visitors were cleared
+    const io = req.app.get("io");
+    const societyRoomName = `society:${societyId}`;
+    io.to(societyRoomName).emit("rejected_visitors_cleared", {
+      society_id: societyId,
+      deleted_count: result.rowCount,
+      cleared_at: new Date().toISOString(),
+    });
+
+    logger.info(`📡 Socket.io event 'rejected_visitors_cleared' emitted to room: ${societyRoomName}`, {
+      deleted_count: result.rowCount,
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.rowCount} rejected visitor(s)`,
+      deleted_count: result.rowCount,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    logger.error("Error soft deleting rejected visitors:", error);
+
+    // If error is about column not existing, provide helpful message
+    if (error.message && error.message.includes("deleted_at")) {
+      return res.status(500).json({
+        success: false,
+        error: "Database schema needs migration. Please add 'deleted_at' column to visitors table.",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete rejected visitors",
+    });
+  } finally {
+    client.release();
   }
 });
 

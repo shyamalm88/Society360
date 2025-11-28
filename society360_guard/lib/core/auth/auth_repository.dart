@@ -11,6 +11,8 @@ class AuthRepository {
   // Storage keys
   static const String _sessionTokenKey = 'session_token';
   static const String _guardIdKey = 'guard_id';
+  static const String _societyIdKey = 'society_id';
+  static const String _userIdKey = 'user_id';
 
   // Hardcoded PIN for Stage 1 (production will use backend)
   static const String _validPin = '123456';
@@ -78,12 +80,50 @@ class AuthRepository {
     }
   }
 
+  /// Get current user ID
+  Future<String?> getUserId() async {
+    try {
+      return await _secureStorage.read(key: _userIdKey);
+    } catch (e) {
+      print('Get user ID error: $e');
+      return null;
+    }
+  }
+
+  /// Get current society ID
+  Future<String?> getSocietyId() async {
+    try {
+      return await _secureStorage.read(key: _societyIdKey);
+    } catch (e) {
+      print('Get society ID error: $e');
+      return null;
+    }
+  }
+
+  /// Save profile data
+  Future<void> saveProfileData({
+    required String userId,
+    required String guardId,
+    required String societyId,
+  }) async {
+    try {
+      await _secureStorage.write(key: _userIdKey, value: userId);
+      await _secureStorage.write(key: _guardIdKey, value: guardId);
+      await _secureStorage.write(key: _societyIdKey, value: societyId);
+    } catch (e) {
+      print('Save profile data error: $e');
+      rethrow;
+    }
+  }
+
   /// Logout
   /// Clears all session data from secure storage
   Future<void> logout() async {
     try {
       await _secureStorage.delete(key: _sessionTokenKey);
       await _secureStorage.delete(key: _guardIdKey);
+      await _secureStorage.delete(key: _userIdKey);
+      await _secureStorage.delete(key: _societyIdKey);
     } catch (e) {
       print('Logout error: $e');
       // Even if there's an error, we want to clear local state

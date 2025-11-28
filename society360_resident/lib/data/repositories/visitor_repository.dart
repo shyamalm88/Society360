@@ -95,6 +95,48 @@ class VisitorRepository {
       return null;
     }
   }
+
+  /// Fetch today's visitors for a specific flat
+  Future<List<Map<String, dynamic>>> getTodaysVisitors(String flatId) async {
+    try {
+      final response = await _apiClient.get('/visitors', queryParameters: {
+        'flat_id': flatId,
+      });
+
+      if (response.data['success'] == true) {
+        final List<dynamic> visitorsData = response.data['data'];
+        final allVisitors = visitorsData.cast<Map<String, dynamic>>();
+
+        // Filter for today's visitors
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final todayEnd = todayStart.add(const Duration(days: 1));
+
+        final todaysVisitors = allVisitors.where((visitor) {
+          final expectedStart = visitor['expected_start'];
+          if (expectedStart == null) return false;
+
+          final visitDateTime = DateTime.parse(expectedStart);
+          return visitDateTime.isAfter(todayStart) && visitDateTime.isBefore(todayEnd);
+        }).toList();
+
+        // Sort by expected time (latest first)
+        todaysVisitors.sort((a, b) {
+          final aTime = DateTime.parse(a['expected_start']);
+          final bTime = DateTime.parse(b['expected_start']);
+          return bTime.compareTo(aTime);
+        });
+
+        print('✅ Found ${todaysVisitors.length} visitors for today (Flat: $flatId)');
+        return todaysVisitors;
+      }
+
+      return [];
+    } catch (e) {
+      print('❌ Error fetching today\'s visitors: $e');
+      return [];
+    }
+  }
 }
 
 /// Riverpod Provider for Visitor Repository
@@ -128,4 +170,19 @@ final pendingVisitorsCountProvider = Provider<int>((ref) {
     loading: () => 0,
     error: (_, __) => 0,
   );
+});
+
+/// Provider for today's visitors for the current flat
+final todaysVisitorsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, flatId) async {
+  final repo = ref.watch(visitorRepositoryProvider);
+
+  // Auto-refresh every 30 seconds
+  final timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    ref.invalidateSelf();
+  });
+
+  // Cleanup timer when provider is disposed
+  ref.onDispose(() => timer.cancel());
+
+  return repo.getTodaysVisitors(flatId);
 });

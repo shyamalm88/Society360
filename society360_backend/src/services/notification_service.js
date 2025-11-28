@@ -1,6 +1,6 @@
-const admin = require('firebase-admin');
-const { query } = require('../config/database');
-const logger = require('../config/logger');
+const admin = require("firebase-admin");
+const { query } = require("../config/database");
+const logger = require("../config/logger");
 
 /**
  * Notification Service
@@ -14,16 +14,16 @@ class NotificationService {
     try {
       // Get user's FCM tokens from fcm_tokens table
       const tokensResult = await query(
-        'SELECT token FROM fcm_tokens WHERE user_id = $1 AND is_active = true',
+        "SELECT token FROM fcm_tokens WHERE user_id = $1 AND is_active = true",
         [userId]
       );
 
       if (tokensResult.rows.length === 0) {
         logger.warn(`No FCM tokens found for user: ${userId}`);
-        return { success: false, message: 'No devices registered' };
+        return { success: false, message: "No devices registered" };
       }
 
-      const tokens = tokensResult.rows.map(row => row.token);
+      const tokens = tokensResult.rows.map((row) => row.token);
 
       // Send multicast message
       const message = {
@@ -33,7 +33,7 @@ class NotificationService {
         },
         data: {
           ...data,
-          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
         },
         tokens,
       };
@@ -46,14 +46,16 @@ class NotificationService {
          VALUES ($1, $2, $3, $4, now(), $5)`,
         [
           userId,
-          'push',
+          "push",
           JSON.stringify({ notification, data }),
-          response.successCount > 0 ? 'delivered' : 'failed',
+          response.successCount > 0 ? "delivered" : "failed",
           response.successCount > 0 ? new Date() : null,
         ]
       );
 
-      logger.info(`Sent FCM notification to user ${userId}: ${response.successCount}/${tokens.length} devices`);
+      logger.info(
+        `Sent FCM notification to user ${userId}: ${response.successCount}/${tokens.length} devices`
+      );
 
       return {
         success: true,
@@ -61,7 +63,7 @@ class NotificationService {
         failureCount: response.failureCount,
       };
     } catch (error) {
-      logger.error('Error sending push notification:', error);
+      logger.error("Error sending push notification:", error);
       throw error;
     }
   }
@@ -88,35 +90,37 @@ class NotificationService {
       }
 
       // Send notification to each resident
-      const promises = residents.map(resident =>
+      const promises = residents.map((resident) =>
         this.sendToUser(
           resident.user_id,
           {
-            title: 'Visitor Request',
+            title: "Visitor Request",
             body: `${visitorData.visitor_name} wants to visit. Tap to approve or reject.`,
           },
           {
-            type: 'visitor_request',
+            type: "visitor_request",
             visitor_id: visitorData.visitor_id,
             visitor_name: visitorData.visitor_name,
-            purpose: visitorData.purpose || '',
+            purpose: visitorData.purpose || "",
             flat_id: flatId,
-            screen: 'visitor_approvals', // Screen to navigate to
+            screen: "visitor_approvals", // Screen to navigate to
           }
         )
       );
 
       await Promise.all(promises);
-      logger.info(`Notified ${residents.length} residents about visitor: ${visitorData.visitor_id}`);
+      logger.info(
+        `Notified ${residents.length} residents about visitor: ${visitorData.visitor_id}`
+      );
     } catch (error) {
-      logger.error('Error notifying visitor request:', error);
+      logger.error("Error notifying visitor request:", error);
     }
   }
 
   /**
    * Send approval/denial notification to guard
    */
-  async notifyGuardApproval(societyId, approvalData) {
+  async notifyGuardApproval(societyId, approvalData, options = {}) {
     try {
       // Get all guards of the society
       const guardsResult = await query(
@@ -134,19 +138,29 @@ class NotificationService {
         return;
       }
 
-      const decision = approvalData.decision === 'accept' ? 'Approved' : 'Rejected';
-      const emoji = approvalData.decision === 'accept' ? '✅' : '❌';
+      const decision =
+        approvalData.decision === "accept" ? "Approved" : "Rejected";
+      const emoji = approvalData.decision === "accept" ? "✅" : "❌";
+
+      // Filter out the user who initiated the action
+      const filteredGuards = options.excludeUserId
+        ? guards.filter((guard) => guard.user_id !== options.excludeUserId)
+        : guards;
+
+      if (filteredGuards.length === 0) return;
 
       // Send notification to each guard
-      const promises = guards.map(guard =>
+      const promises = filteredGuards.map((guard) =>
         this.sendToUser(
           guard.user_id,
           {
             title: `${emoji} Visitor ${decision}`,
-            body: `${approvalData.visitor_name} ${decision.toLowerCase()} by ${approvalData.approver_name}`,
+            body: `${approvalData.visitor_name} ${decision.toLowerCase()} by ${
+              approvalData.approver_name
+            }`,
           },
           {
-            type: 'visitor_approval',
+            type: "visitor_approval",
             visitor_id: approvalData.visitor_id,
             decision: approvalData.decision,
             status: approvalData.status,
@@ -155,9 +169,11 @@ class NotificationService {
       );
 
       await Promise.all(promises);
-      logger.info(`Notified ${guards.length} guards about approval: ${approvalData.visitor_id}`);
+      logger.info(
+        `Notified ${filteredGuards.length} guards about approval: ${approvalData.visitor_id}`
+      );
     } catch (error) {
-      logger.error('Error notifying guard approval:', error);
+      logger.error("Error notifying guard approval:", error);
     }
   }
 
@@ -183,15 +199,15 @@ class NotificationService {
       }
 
       // Send notification to each resident
-      const promises = residents.map(resident =>
+      const promises = residents.map((resident) =>
         this.sendToUser(
           resident.user_id,
           {
-            title: '🚪 Visitor Checked In',
+            title: "🚪 Visitor Checked In",
             body: `${visitorData.visitor_name} has entered the premises`,
           },
           {
-            type: 'visitor_checkin',
+            type: "visitor_checkin",
             visitor_id: visitorData.visitor_id,
             visitor_name: visitorData.visitor_name,
             flat_id: flatId,
@@ -200,9 +216,11 @@ class NotificationService {
       );
 
       await Promise.all(promises);
-      logger.info(`Notified ${residents.length} residents about check-in: ${visitorData.visitor_id}`);
+      logger.info(
+        `Notified ${residents.length} residents about check-in: ${visitorData.visitor_id}`
+      );
     } catch (error) {
-      logger.error('Error notifying visitor check-in:', error);
+      logger.error("Error notifying visitor check-in:", error);
     }
   }
 
@@ -220,15 +238,15 @@ class NotificationService {
         [flatId]
       );
 
-      const residentPromises = residentsResult.rows.map(resident =>
+      const residentPromises = residentsResult.rows.map((resident) =>
         this.sendToUser(
           resident.user_id,
           {
-            title: '⏱️ Visitor Request Expired',
+            title: "⏱️ Visitor Request Expired",
             body: `${visitorData.visitor_name} request auto-rejected (no response)`,
           },
           {
-            type: 'visitor_timeout',
+            type: "visitor_timeout",
             visitor_id: visitorData.visitor_id,
             visitor_name: visitorData.visitor_name,
           }
@@ -244,15 +262,15 @@ class NotificationService {
         [societyId]
       );
 
-      const guardPromises = guardsResult.rows.map(guard =>
+      const guardPromises = guardsResult.rows.map((guard) =>
         this.sendToUser(
           guard.user_id,
           {
-            title: '⏱️ Request Timed Out',
+            title: "⏱️ Request Timed Out",
             body: `${visitorData.visitor_name} auto-rejected after 5 minutes`,
           },
           {
-            type: 'visitor_timeout',
+            type: "visitor_timeout",
             visitor_id: visitorData.visitor_id,
             visitor_name: visitorData.visitor_name,
           }
@@ -262,7 +280,7 @@ class NotificationService {
       await Promise.all([...residentPromises, ...guardPromises]);
       logger.info(`Notified about auto-rejection: ${visitorData.visitor_id}`);
     } catch (error) {
-      logger.error('Error notifying auto-rejection:', error);
+      logger.error("Error notifying auto-rejection:", error);
     }
   }
 }
