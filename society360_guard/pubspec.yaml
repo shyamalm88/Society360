@@ -64,6 +64,12 @@ dependencies:
   # Local Notifications
   flutter_local_notifications: ^18.0.1
 
+  # Audio Player
+  audioplayers: ^6.1.0
+
+  # Ringtone Player (for alarm sounds)
+  flutter_ringtone_player: ^4.0.0+3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

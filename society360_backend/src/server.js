@@ -20,6 +20,7 @@ const guardRoutes = require('./routes/guards');
 const residentRoutes = require('./routes/residents');
 const profileRoutes = require('./routes/profile');
 const fcmRoutes = require('./routes/fcm');
+const emergencyRoutes = require('./routes/emergencies');
 
 // Initialize Express app
 const app = express();
@@ -94,6 +95,7 @@ app.use(`/${API_VERSION}/resident-requests`, residentRoutes);
 app.use(`/${API_VERSION}`, residentRoutes); // Also mount at root for /my-flats endpoint
 app.use(`/${API_VERSION}/profile`, profileRoutes);
 app.use(`/${API_VERSION}`, fcmRoutes);
+app.use(`/${API_VERSION}/emergencies`, emergencyRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {

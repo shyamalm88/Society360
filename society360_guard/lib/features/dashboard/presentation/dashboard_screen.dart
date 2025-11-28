@@ -9,6 +9,8 @@ import '../../../core/services/visitor_service.dart';
 import '../../../core/services/app_initialization_service.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/services/socket_service_provider.dart';
+import '../../emergencies/presentation/emergencies_screen.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -17,7 +19,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late final SocketService _socketService;
 
   int _approvedCount = 0;
@@ -34,11 +36,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   List<Map<String, dynamic>> _recentActivities = [];
   bool _isLoadingRecentActivity = true;
 
+  // Active Emergency Alerts
+  List<Map<String, dynamic>> _activeEmergencies = [];
+  AnimationController? _shakeController;
+
   @override
   void initState() {
     super.initState();
     debugPrint('🏠 Dashboard: initState called');
     WidgetsBinding.instance.addObserver(this);
+
+    // Initialize shake animation controller
+    _shakeController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
     _initializeApp();
     _fetchApprovalCounts();
     _fetchTodaysVisitors();
@@ -69,6 +82,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
 
       // Add dashboard-specific listeners for checkout events
       _socketService.addCheckoutListener(_handleCheckoutEvent);
+
+      // Add dashboard-specific listeners for emergency alert events
+      _socketService.addEmergencyAlertListener(_handleEmergencyAlertEvent);
+
+      // Add dashboard-specific listeners for emergency updated events
+      _socketService.addEmergencyUpdatedListener(_handleEmergencyUpdatedEvent);
 
       debugPrint('✅ Dashboard: Socket.io listeners registered');
     } catch (e) {
@@ -135,6 +154,69 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     }
   }
 
+  /// Handle emergency alert events from Socket.io
+  void _handleEmergencyAlertEvent(Map<String, dynamic> data) {
+    debugPrint('🚨 Dashboard: Received emergency alert event: $data');
+    if (mounted) {
+      setState(() {
+        _activeEmergencies.add(data);
+      });
+
+      // Trigger shake animation
+      _shakeController?.repeat(reverse: true);
+      Future.delayed(const Duration(seconds: 2), () {
+        _shakeController?.stop();
+        _shakeController?.reset();
+      });
+
+      // Play alarm sound
+      _playAlarmSound();
+    }
+  }
+
+  /// Play alarm sound for emergency alerts
+  Future<void> _playAlarmSound() async {
+    try {
+      debugPrint('🔊 Playing emergency alarm sound');
+      FlutterRingtonePlayer().playAlarm(
+        asAlarm: true,
+        looping: false,
+        volume: 1.0,
+      );
+
+      // Stop the alarm after 3 seconds
+      Future.delayed(const Duration(seconds: 3), () {
+        FlutterRingtonePlayer().stop();
+      });
+    } catch (e) {
+      debugPrint('❌ Error playing alarm sound: $e');
+    }
+  }
+
+  /// Handle emergency updated events from Socket.io
+  void _handleEmergencyUpdatedEvent(Map<String, dynamic> data) {
+    debugPrint('🔄 Dashboard: Received emergency updated event: $data');
+    if (mounted) {
+      final emergencyId = data['emergency_id'];
+      final status = data['status'];
+
+      // Remove emergency from active list if resolved
+      if (status == 'resolved') {
+        setState(() {
+          _activeEmergencies.removeWhere((e) => e['emergency_id'] == emergencyId);
+        });
+      } else {
+        // Update emergency status
+        setState(() {
+          final index = _activeEmergencies.indexWhere((e) => e['emergency_id'] == emergencyId);
+          if (index != -1) {
+            _activeEmergencies[index] = {..._activeEmergencies[index], ...data};
+          }
+        });
+      }
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -159,6 +241,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     _socketService.removeRejectedClearedListener(_handleRejectedClearedEvent);
     _socketService.removeCheckinListener(_handleCheckinEvent);
     _socketService.removeCheckoutListener(_handleCheckoutEvent);
+    _socketService.removeEmergencyAlertListener(_handleEmergencyAlertEvent);
+    _socketService.removeEmergencyUpdatedListener(_handleEmergencyUpdatedEvent);
+
+    // Dispose animation controller
+    _shakeController?.dispose();
 
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -452,6 +539,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 20),
+
+            // Emergency Alerts (if any active emergencies)
+            if (_activeEmergencies.isNotEmpty) ...[
+              _buildEmergencyAlertsSection(),
+              const SizedBox(height: 20),
+            ],
 
             // 1. Visitor Approvals Summary Card
             _buildApprovalsSummaryCard(context),
@@ -1876,6 +1969,146 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Build emergency alerts section with shake animation
+  Widget _buildEmergencyAlertsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: AnimatedBuilder(
+        animation: _shakeController!,
+        builder: (context, child) {
+          final offset = _shakeController!.isAnimating
+              ? 8.0 * _shakeController!.value
+              : 0.0;
+          return Transform.translate(
+            offset: Offset(offset, 0),
+            child: child,
+          );
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: _activeEmergencies.map((emergency) {
+            final flatNumber = emergency['flat_number'] ?? 'Unknown';
+            final blockName = emergency['block_name'] ?? 'Unknown';
+            final description = emergency['description'] ?? 'Emergency alert';
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EmergenciesScreen(),
+                  ),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFEF4444), // Red
+                      Color(0xFFDC2626), // Darker red
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFEF4444).withOpacity(0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Alert Icon
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.emergency,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Emergency Details
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'EMERGENCY ALERT',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Flat $flatNumber • Block $blockName',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            description,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Arrow Icon
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ),
     );

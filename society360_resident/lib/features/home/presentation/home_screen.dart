@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../../../config/theme.dart';
+import '../../../core/api/api_client.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/socket/socket_service.dart';
 import '../../../data/repositories/visitor_repository.dart';
@@ -298,11 +299,129 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class HomeTabScreen extends ConsumerWidget {
+class HomeTabScreen extends ConsumerStatefulWidget {
   const HomeTabScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeTabScreen> createState() => _HomeTabScreenState();
+}
+
+class _HomeTabScreenState extends ConsumerState<HomeTabScreen> with SingleTickerProviderStateMixin {
+  // Emergency long-press tracking
+  bool _isEmergencyPressing = false;
+  double _emergencyPressProgress = 0.0;
+  DateTime? _pressStartTime;
+  AnimationController? _progressController;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..addListener(() {
+        setState(() {
+          _emergencyPressProgress = _progressController!.value;
+        });
+        if (_progressController!.value >= 1.0) {
+          _triggerEmergency();
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _progressController?.dispose();
+    super.dispose();
+  }
+
+  /// Handle emergency long-press start
+  void _onEmergencyPressStart() {
+    setState(() {
+      _isEmergencyPressing = true;
+      _pressStartTime = DateTime.now();
+    });
+    _progressController?.forward(from: 0.0);
+  }
+
+  /// Handle emergency long-press end/cancel
+  void _onEmergencyPressEnd() {
+    if (!_isEmergencyPressing) return;
+
+    setState(() {
+      _isEmergencyPressing = false;
+      _pressStartTime = null;
+    });
+    _progressController?.stop();
+    _progressController?.reset();
+  }
+
+  /// Trigger emergency alert
+  Future<void> _triggerEmergency() async {
+    _onEmergencyPressEnd(); // Reset the press state
+
+    final storage = ref.read(storageServiceProvider);
+    final flatId = storage.flatId;
+
+    if (flatId == null || flatId.isEmpty) {
+      _showSnackBar('Error: No flat information found', isError: true);
+      return;
+    }
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Call emergency API
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.post(
+        '/emergencies',
+        data: {
+          'flat_id': flatId,
+          'description': 'Emergency alert triggered by resident',
+        },
+      );
+
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+
+        if (response.data['success'] == true) {
+          _showSnackBar('Emergency alert sent to all guards!', isError: false);
+        } else {
+          _showSnackBar('Failed to send emergency alert', isError: true);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error triggering emergency: $e');
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        _showSnackBar('Failed to send emergency alert', isError: true);
+      }
+    }
+  }
+
+  /// Show snackbar message
+  void _showSnackBar(String message, {required bool isError}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppTheme.errorRed : AppTheme.successGreen,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final storage = ref.watch(storageServiceProvider);
 
     final flatNumber = storage.flatNumber ?? 'N/A';
@@ -557,12 +676,11 @@ class HomeTabScreen extends ConsumerWidget {
       {
         'icon': Icons.phone_in_talk_rounded,
         'label': 'Emergency',
-        'subtitle': 'Quick contacts',
+        'subtitle': 'Hold for 3s',
         'color': const Color(0xFFEF4444), // Red
         'bgColor': const Color(0xFFFEE2E2),
-        'onTap': () {
-          // TODO: Navigate to emergency contacts
-        },
+        'onTap': null, // Will use gesture detector for long press
+        'isEmergency': true,
       },
       {
         'icon': Icons.campaign_rounded,
@@ -603,7 +721,108 @@ class HomeTabScreen extends ConsumerWidget {
             final action = actions[index];
             final color = action['color'] as Color;
             final bgColor = action['bgColor'] as Color;
+            final isEmergency = action['isEmergency'] == true;
 
+            if (isEmergency) {
+              // Special handling for emergency button with long-press
+              return GestureDetector(
+                onLongPressStart: (_) => _onEmergencyPressStart(),
+                onLongPressEnd: (_) => _onEmergencyPressEnd(),
+                onLongPressCancel: () => _onEmergencyPressEnd(),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _isEmergencyPressing
+                          ? const Color(0xFFEF4444)
+                          : const Color(0xFFE5E7EB),
+                        width: _isEmergencyPressing ? 2 : 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _isEmergencyPressing
+                            ? const Color(0xFFEF4444).withOpacity(0.2)
+                            : Colors.black.withOpacity(0.04),
+                          blurRadius: _isEmergencyPressing ? 12 : 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        // Progress indicator background
+                        if (_isEmergencyPressing)
+                          Positioned.fill(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: LinearProgressIndicator(
+                                value: _emergencyPressProgress,
+                                backgroundColor: Colors.transparent,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  const Color(0xFFEF4444).withOpacity(0.1),
+                                ),
+                                minHeight: double.infinity,
+                              ),
+                            ),
+                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: bgColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                action['icon'] as IconData,
+                                color: color,
+                                size: 24,
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  action['label'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _isEmergencyPressing
+                                    ? '${((_emergencyPressProgress) * 3).toStringAsFixed(1)}s'
+                                    : action['subtitle'] as String,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: _isEmergencyPressing
+                                      ? const Color(0xFFEF4444)
+                                      : const Color(0xFF6B7280),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            // Regular action tiles
             return Material(
               color: Colors.transparent,
               child: InkWell(
