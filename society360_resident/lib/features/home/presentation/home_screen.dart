@@ -318,111 +318,186 @@ class HomeTabScreen extends ConsumerWidget {
             // App Bar
             SliverToBoxAdapter(
               child: Container(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: const Color(0xFFE8ECF4),
-                      width: 1,
-                    ),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white,
+                      const Color(0xFFFAFBFC),
+                    ],
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Welcome Home',
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1A1D1F),
-                                  letterSpacing: -0.5,
-                                  height: 1.1,
-                                ),
+                child: SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          // Logo/Brand Section
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppTheme.primaryOrange.withOpacity(0.1),
+                                  AppTheme.accentCyan.withOpacity(0.1),
+                                ],
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.home_rounded,
+                              color: AppTheme.primaryOrange,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // App Name & Date
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  societyName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1D1F),
+                                    letterSpacing: -0.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: const Color(0xFF6F767E),
+                                    letterSpacing: 0.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Action Icons
+                          Row(
+                            children: [
+                              // Notification Icon
+                              InkWell(
+                                onTap: () => _showNotificationsBottomSheet(context),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Stack(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF4F5F7),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(
+                                        Icons.notifications_outlined,
+                                        color: Color(0xFF1A1D1F),
+                                        size: 20,
+                                      ),
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.accentCyan.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.location_on,
-                                          size: 14,
-                                          color: AppTheme.accentCyan,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '$flatNumber, Block $blockName',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppTheme.accentCyan,
-                                            letterSpacing: 0.1,
+                                    Positioned(
+                                      right: 6,
+                                      top: 6,
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.errorRed,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 1.5,
                                           ),
                                         ),
-                                      ],
+                                      ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // Settings/Profile Icon
+                              InkWell(
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/profile');
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF4F5F7),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                ],
+                                  child: const Icon(
+                                    Icons.person_outline,
+                                    color: Color(0xFF1A1D1F),
+                                    size: 20,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
+                        ],
+                      ),
+
+                      // Flat Info Badge
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
-                        Stack(
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentCyan.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppTheme.accentCyan.withOpacity(0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            InkWell(
-                              onTap: () => _showNotificationsBottomSheet(context),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF4F5F7),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(
-                                  Icons.notifications_outlined,
-                                  color: Color(0xFF1A1D1F),
-                                  size: 22,
-                                ),
-                              ),
+                            Icon(
+                              Icons.location_on,
+                              size: 16,
+                              color: AppTheme.accentCyan,
                             ),
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.errorRed,
-                                  shape: BoxShape.circle,
-                                ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Flat $flatNumber • Block $blockName',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.accentCyan,
+                                letterSpacing: 0.2,
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ).animate().fadeIn(duration: 600.ms),
+              ).animate().fadeIn(duration: 600.ms).slideY(begin: -0.2, end: 0),
             ),
 
             // Content
@@ -1462,7 +1537,7 @@ class HomeTabScreen extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFFDC2626), // Flat vibrant red
+            color: AppTheme.primaryOrange, // Orange - informative and attention-grabbing
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -1524,7 +1599,7 @@ class HomeTabScreen extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFDC2626),
+                    color: AppTheme.primaryOrange,
                   ),
                 ),
               ),

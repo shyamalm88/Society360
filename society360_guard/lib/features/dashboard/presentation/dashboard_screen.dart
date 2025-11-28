@@ -64,6 +64,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
       // Add dashboard-specific listeners for rejected visitors cleared events
       _socketService.addRejectedClearedListener(_handleRejectedClearedEvent);
 
+      // Add dashboard-specific listeners for check-in events
+      _socketService.addCheckinListener(_handleCheckinEvent);
+
+      // Add dashboard-specific listeners for checkout events
+      _socketService.addCheckoutListener(_handleCheckoutEvent);
+
       debugPrint('✅ Dashboard: Socket.io listeners registered');
     } catch (e) {
       debugPrint('❌ Dashboard: Error initializing app: $e');
@@ -109,6 +115,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     }
   }
 
+  /// Handle visitor check-in events from Socket.io
+  void _handleCheckinEvent(Map<String, dynamic> data) {
+    debugPrint('🏠 Dashboard: Received visitor check-in event: $data');
+    if (mounted) {
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+    }
+  }
+
+  /// Handle visitor checkout events from Socket.io
+  void _handleCheckoutEvent(Map<String, dynamic> data) {
+    debugPrint('🏠 Dashboard: Received visitor checkout event: $data');
+    if (mounted) {
+      _fetchApprovalCounts();
+      _fetchTodaysVisitors();
+      _fetchRecentActivity();
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -131,6 +157,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     _socketService.removeApprovalListener(_handleApprovalEvent);
     _socketService.removeTimeoutListener(_handleTimeoutEvent);
     _socketService.removeRejectedClearedListener(_handleRejectedClearedEvent);
+    _socketService.removeCheckinListener(_handleCheckinEvent);
+    _socketService.removeCheckoutListener(_handleCheckoutEvent);
 
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -198,7 +226,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
         if (expectedStart == null) return false;
 
         final visitDateTime = DateTime.parse(expectedStart);
-        return visitDateTime.isAfter(todayStart) && visitDateTime.isBefore(todayEnd);
+        // Use >= and < comparison to include visitors at the start of the day
+        return !visitDateTime.isBefore(todayStart) && visitDateTime.isBefore(todayEnd);
       }).toList();
 
       // Sort by expected time (latest first)
@@ -258,143 +287,165 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        toolbarHeight: 70,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryOrange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.security,
-                    size: 18,
-                    color: AppTheme.primaryOrange,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    currentTime,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryOrange,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'SecureEntry Pro',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1D1F),
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  Text(
-                    currentDate,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF6F767E),
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF4F5F7),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.notifications_none,
-                    color: Color(0xFF1A1D1F),
-                    size: 22,
-                  ),
-                ),
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: AppTheme.errorRed,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                  ),
-                ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white,
+                const Color(0xFFFAFBFC),
               ],
             ),
-            onPressed: () => _showNotificationsSheet(context),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF4F5F7),
-                borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
-              child: const Icon(
-                Icons.logout,
-                color: Color(0xFF1A1D1F),
-                size: 22,
+            ],
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                children: [
+                  // Security Badge Icon
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primaryOrange.withOpacity(0.15),
+                          AppTheme.accentTeal.withOpacity(0.15),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.security_rounded,
+                      color: AppTheme.primaryOrange,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // App Name & Date
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'SecureEntry Guard',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1D1F),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        Text(
+                          currentDate,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6F767E),
+                            letterSpacing: 0,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Notification Icon
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F5F7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_none_rounded,
+                            color: Color(0xFF1A1D1F),
+                            size: 20,
+                          ),
+                        ),
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: AppTheme.errorRed,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    onPressed: () => _showNotificationsSheet(context),
+                  ),
+                  const SizedBox(width: 4),
+                  // Logout Icon
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4F5F7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.logout_rounded,
+                        color: Color(0xFF1A1D1F),
+                        size: 20,
+                      ),
+                    ),
+                    onPressed: () async {
+                      final shouldLogout = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Logout'),
+                          content: const Text('Are you sure you want to logout?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Logout'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (shouldLogout == true) {
+                        await ref.read(authProvider.notifier).logout();
+                        if (context.mounted) {
+                          context.go('/login');
+                        }
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
-            onPressed: () async {
-              final shouldLogout = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Logout'),
-                  content: const Text('Are you sure you want to logout?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Logout'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (shouldLogout == true) {
-                await ref.read(authProvider.notifier).logout();
-                if (context.mounted) {
-                  context.go('/login');
-                }
-              }
-            },
           ),
-          const SizedBox(width: 12),
-        ],
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(

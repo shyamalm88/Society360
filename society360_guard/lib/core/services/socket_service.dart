@@ -20,6 +20,12 @@ class SocketService {
   /// Multiple callbacks for rejected visitors cleared events
   final List<Function(Map<String, dynamic>)> _rejectedClearedListeners = [];
 
+  /// Multiple callbacks for visitor check-in events
+  final List<Function(Map<String, dynamic>)> _checkinListeners = [];
+
+  /// Multiple callbacks for visitor checkout events
+  final List<Function(Map<String, dynamic>)> _checkoutListeners = [];
+
   /// Legacy single callback for visitor approval events (deprecated)
   @Deprecated('Use addApprovalListener instead')
   Function(Map<String, dynamic>)? onVisitorApproval;
@@ -74,6 +80,34 @@ class SocketService {
   void removeRejectedClearedListener(Function(Map<String, dynamic>) listener) {
     _rejectedClearedListeners.remove(listener);
     debugPrint('🗑️ Removed rejected cleared listener (remaining: ${_rejectedClearedListeners.length})');
+  }
+
+  /// Add a listener for visitor check-in events
+  void addCheckinListener(Function(Map<String, dynamic>) listener) {
+    if (!_checkinListeners.contains(listener)) {
+      _checkinListeners.add(listener);
+      debugPrint('✅ Added check-in listener (total: ${_checkinListeners.length})');
+    }
+  }
+
+  /// Remove a listener for visitor check-in events
+  void removeCheckinListener(Function(Map<String, dynamic>) listener) {
+    _checkinListeners.remove(listener);
+    debugPrint('🗑️ Removed check-in listener (remaining: ${_checkinListeners.length})');
+  }
+
+  /// Add a listener for visitor checkout events
+  void addCheckoutListener(Function(Map<String, dynamic>) listener) {
+    if (!_checkoutListeners.contains(listener)) {
+      _checkoutListeners.add(listener);
+      debugPrint('✅ Added checkout listener (total: ${_checkoutListeners.length})');
+    }
+  }
+
+  /// Remove a listener for visitor checkout events
+  void removeCheckoutListener(Function(Map<String, dynamic>) listener) {
+    _checkoutListeners.remove(listener);
+    debugPrint('🗑️ Removed checkout listener (remaining: ${_checkoutListeners.length})');
   }
 
   /// Connect to Socket.io server
@@ -185,6 +219,36 @@ class SocketService {
             listener(eventData);
           } catch (e) {
             debugPrint('❌ Error in rejected cleared listener: $e');
+          }
+        }
+      });
+
+      // Listen for visitor check-in events
+      _socket!.on('visitor_checkin', (data) {
+        debugPrint('🚪 Visitor check-in received: $data');
+        final eventData = data as Map<String, dynamic>;
+
+        // Call all registered listeners
+        for (final listener in _checkinListeners) {
+          try {
+            listener(eventData);
+          } catch (e) {
+            debugPrint('❌ Error in check-in listener: $e');
+          }
+        }
+      });
+
+      // Listen for visitor checkout events
+      _socket!.on('visitor_checkout', (data) {
+        debugPrint('👋 Visitor checkout received: $data');
+        final eventData = data as Map<String, dynamic>;
+
+        // Call all registered listeners
+        for (final listener in _checkoutListeners) {
+          try {
+            listener(eventData);
+          } catch (e) {
+            debugPrint('❌ Error in checkout listener: $e');
           }
         }
       });

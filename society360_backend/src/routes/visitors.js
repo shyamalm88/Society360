@@ -216,14 +216,18 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
     const { flat_id, status, date_from, date_to } = req.query;
 
     let queryText = `
-      SELECT v.*,
+      SELECT v.id, v.visitor_name, v.phone, v.vehicle_no, v.purpose,
+        v.flat_id, v.status, v.expected_start, v.expected_end,
+        v.approval_deadline, v.created_at, v.invited_by,
         f.flat_number, b.name as block_name,
-        u.name as invited_by_name
+        u.name as invited_by_name,
+        vis.id as visit_id
       FROM visitors v
       LEFT JOIN flats f ON v.flat_id = f.id
       LEFT JOIN blocks b ON f.block_id = b.id
       LEFT JOIN users u ON v.invited_by = u.id
-      WHERE v.deleted_at IS NULL
+      LEFT JOIN visits vis ON v.id = vis.visitor_id AND vis.checkout_time IS NULL
+      WHERE 1=1
     `;
     const params = [];
 
@@ -643,7 +647,7 @@ router.get("/pending", verifyFirebaseToken, async (req, res) => {
 
 /**
  * DELETE /visitors/rejected
- * Soft delete all rejected visitors for the authenticated user's society
+ * Delete all rejected visitors for the authenticated user's society
  * Only accessible by guards
  */
 router.delete("/rejected", verifyFirebaseToken, async (req, res) => {
@@ -674,25 +678,23 @@ router.delete("/rejected", verifyFirebaseToken, async (req, res) => {
 
     const societyId = guardResult.rows[0].society_id;
 
-    // Soft delete rejected visitors by setting deleted_at timestamp
+    // Delete rejected visitors
     // Join through flats -> blocks -> complexes to get society_id
     const result = await client.query(
-      `UPDATE visitors v
-       SET deleted_at = NOW()
-       FROM flats f
-       JOIN blocks b ON f.block_id = b.id
-       JOIN complexes c ON b.complex_id = c.id
+      `DELETE FROM visitors v
+       USING flats f, blocks b, complexes c
        WHERE v.flat_id = f.id
+       AND f.block_id = b.id
+       AND b.complex_id = c.id
        AND v.status = 'denied'
        AND c.society_id = $1
-       AND v.deleted_at IS NULL
        RETURNING v.id`,
       [societyId]
     );
 
     await client.query("COMMIT");
 
-    logger.info(`✅ Soft deleted ${result.rowCount} rejected visitors for society ${societyId}`);
+    logger.info(`✅ Deleted ${result.rowCount} rejected visitors for society ${societyId}`);
 
     // Emit Socket.io event to notify guards that rejected visitors were cleared
     const io = req.app.get("io");

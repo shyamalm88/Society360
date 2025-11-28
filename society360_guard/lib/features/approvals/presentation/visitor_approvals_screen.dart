@@ -79,6 +79,12 @@ class _VisitorApprovalsScreenState
     // Add approvals-specific listeners for timeout events
     _socketService.addTimeoutListener(_handleTimeoutEvent);
 
+    // Add check-in listener to update visitor status in real-time
+    _socketService.addCheckinListener(_handleCheckinEvent);
+
+    // Add checkout listener to remove visitor from approved list in real-time
+    _socketService.addCheckoutListener(_handleCheckoutEvent);
+
     debugPrint('✅ Approvals Screen: Socket.io listeners registered');
   }
 
@@ -123,25 +129,74 @@ class _VisitorApprovalsScreenState
     }
   }
 
+  void _handleCheckinEvent(Map<String, dynamic> data) {
+    debugPrint('📋 Approvals Screen: Check-in event received: $data');
+
+    setState(() {
+      // Find the visitor in the approved list and update their status
+      final visitorId = data['visitor_id'];
+      final index = _approvedVisitors.indexWhere(
+        (v) => (v['visitor_id'] ?? v['id']) == visitorId,
+      );
+
+      if (index != -1) {
+        _approvedVisitors[index]['status'] = 'checked_in';
+        _approvedVisitors[index]['visit_id'] = data['visit_id'];
+        debugPrint('📋 Updated visitor status to checked_in: ${_approvedVisitors[index]['visitor_name']}');
+      }
+    });
+  }
+
+  void _handleCheckoutEvent(Map<String, dynamic> data) {
+    debugPrint('📋 Approvals Screen: Checkout event received: $data');
+
+    setState(() {
+      // Remove the visitor from the approved list
+      final visitorId = data['visitor_id'];
+      final sizeBefore = _approvedVisitors.length;
+
+      _approvedVisitors.removeWhere(
+        (v) => (v['visitor_id'] ?? v['id']) == visitorId,
+      );
+
+      if (_approvedVisitors.length < sizeBefore) {
+        debugPrint('📋 Removed checked-out visitor from approved list');
+      }
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('👋 ${data['visitor_name'] ?? 'Visitor'} checked out'),
+          backgroundColor: Colors.purple,
+        ),
+      );
+    }
+  }
+
   Future<void> _fetchVisitors() async {
     setState(() => _isLoading = true);
 
     try {
       debugPrint('📋 Approvals Screen: Fetching visitors...');
       // Fetch visitors by different statuses
-      final approved = await _visitorService.fetchVisitorsByStatus('accepted');
+      final accepted = await _visitorService.fetchVisitorsByStatus('accepted');
+      final checkedIn = await _visitorService.fetchVisitorsByStatus('checked_in');
       final rejected = await _visitorService.fetchVisitorsByStatus('denied');
 
-      debugPrint('📋 Approvals Screen: Received ${approved.length} approved visitors');
+      // Combine accepted and checked_in visitors in the approved list
+      final approved = [...accepted, ...checkedIn];
+
+      debugPrint('📋 Approvals Screen: Received ${accepted.length} accepted visitors');
+      debugPrint('📋 Approvals Screen: Received ${checkedIn.length} checked-in visitors');
+      debugPrint('📋 Approvals Screen: Total approved: ${approved.length}');
       debugPrint('📋 Approvals Screen: Approved visitors: ${approved.map((v) => v['visitor_name']).join(', ')}');
       debugPrint('📋 Approvals Screen: Received ${rejected.length} rejected visitors');
 
-      // Note: Auto-rejected visitors are those that timed out
-      // They might be in 'denied' status with a timeout flag
-      // For now, we'll separate them based on the data structure
-
-      final rejectedList = rejected.where((v) => v['timeout'] != true).toList();
-      final autoRejectedList = rejected.where((v) => v['timeout'] == true).toList();
+      // Note: Since timeout field doesn't exist in DB schema,
+      // all rejected visitors will be shown in the rejected tab for now
+      final rejectedList = rejected;
+      final autoRejectedList = <Map<String, dynamic>>[];
 
       debugPrint('📋 Approvals Screen: Rejected (manual): ${rejectedList.length}');
       debugPrint('📋 Approvals Screen: Rejected (timeout): ${autoRejectedList.length}');
@@ -254,7 +309,7 @@ class _VisitorApprovalsScreenState
       }
 
       // Call check-in API
-      await _visitorService.checkInVisitor(
+      final result = await _visitorService.checkInVisitor(
         visitorId: visitor['visitor_id'] ?? visitor['id'],
         guardId: _guardId!,
         notes: 'Checked in via Approvals screen',
@@ -263,11 +318,19 @@ class _VisitorApprovalsScreenState
       if (mounted) {
         Navigator.pop(context); // Close loading dialog
 
-        // Remove from approved list
+        // Update visitor status to 'checked_in' instead of removing
         setState(() {
-          _approvedVisitors.removeWhere(
+          final index = _approvedVisitors.indexWhere(
             (v) => (v['visitor_id'] ?? v['id']) == (visitor['visitor_id'] ?? visitor['id']),
           );
+          if (index != -1) {
+            _approvedVisitors[index]['status'] = 'checked_in';
+            // Store visit_id from the response for checkout
+            // Backend returns visit record with 'id' field (which is the visit_id)
+            if (result['id'] != null) {
+              _approvedVisitors[index]['visit_id'] = result['id'];
+            }
+          }
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -290,11 +353,67 @@ class _VisitorApprovalsScreenState
     }
   }
 
+  Future<void> _checkOutVisitor(Map<String, dynamic> visitor) async {
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Get visit ID (required for checkout)
+      final visitId = visitor['visit_id'];
+      if (visitId == null) {
+        throw Exception('Visit ID not available. Cannot checkout visitor.');
+      }
+
+      // Call check-out API
+      await _visitorService.checkOutVisitor(
+        visitId: visitId,
+        guardId: _guardId,
+        notes: 'Checked out via Approvals screen',
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+
+        // Remove visitor from approved list after checkout
+        setState(() {
+          _approvedVisitors.removeWhere(
+            (v) => (v['visitor_id'] ?? v['id']) == (visitor['visitor_id'] ?? visitor['id']),
+          );
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ ${visitor['visitor_name']} checked out successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to check out: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     // Remove Socket.io listeners using cached instance (don't access ref after dispose)
     _socketService.removeApprovalListener(_handleApprovalEvent);
     _socketService.removeTimeoutListener(_handleTimeoutEvent);
+    _socketService.removeCheckinListener(_handleCheckinEvent);
+    _socketService.removeCheckoutListener(_handleCheckoutEvent);
     _tabController.dispose();
 
     // Don't disconnect the socket - it's a singleton managed by the provider
@@ -410,6 +529,7 @@ class _VisitorApprovalsScreenState
     return VisitorApprovalCard(
       visitor: visitor,
       onCheckIn: () => _checkInVisitor(visitor),
+      onCheckOut: () => _checkOutVisitor(visitor),
     );
   }
 

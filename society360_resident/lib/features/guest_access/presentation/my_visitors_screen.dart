@@ -382,7 +382,7 @@ class _MyVisitorsScreenState extends ConsumerState<MyVisitorsScreen>
     final timeStr = DateFormat('hh:mm a').format(expectedStart);
     final name = visitor['visitor_name'] ?? 'Unknown';
     final purpose = visitor['purpose'] ?? 'Unknown';
-    final phone = visitor['visitor_phone'] ?? 'N/A';
+    final phone = visitor['phone'] ?? 'N/A';
     final status = visitor['status'] ?? 'pending';
 
     Color statusColor;

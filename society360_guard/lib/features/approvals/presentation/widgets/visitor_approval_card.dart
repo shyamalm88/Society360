@@ -4,11 +4,13 @@ import '../../../../config/theme.dart';
 class VisitorApprovalCard extends StatelessWidget {
   final Map<String, dynamic> visitor;
   final VoidCallback onCheckIn;
+  final VoidCallback? onCheckOut;
 
   const VisitorApprovalCard({
     super.key,
     required this.visitor,
     required this.onCheckIn,
+    this.onCheckOut,
   });
 
   @override
@@ -207,41 +209,53 @@ class VisitorApprovalCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                // Check-in Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: onCheckIn,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryOrange,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.login, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Check In Visitor',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                // Check-in/Check-out Button
+                _buildActionButton(),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton() {
+    final status = visitor['status'] ?? 'accepted';
+    final isCheckedIn = status == 'checked_in';
+
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: isCheckedIn ? onCheckOut : onCheckIn,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isCheckedIn
+            ? const Color(0xFF8B5CF6)  // Purple for checkout
+            : AppTheme.primaryOrange,   // Orange for check-in
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isCheckedIn ? Icons.logout : Icons.login,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isCheckedIn ? 'Check Out Visitor' : 'Check In Visitor',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

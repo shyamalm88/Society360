@@ -225,6 +225,53 @@ class NotificationService {
   }
 
   /**
+   * Send check-out notification to residents
+   */
+  async notifyVisitorCheckedOut(flatId, visitorData) {
+    try {
+      // Get all residents of the flat
+      const residentsResult = await query(
+        `SELECT DISTINCT u.id as user_id
+         FROM flat_occupancies fo
+         JOIN users u ON fo.user_id = u.id
+         WHERE fo.flat_id = $1 AND fo.end_date IS NULL`,
+        [flatId]
+      );
+
+      const residents = residentsResult.rows;
+
+      if (residents.length === 0) {
+        logger.warn(`No residents found for flat: ${flatId}`);
+        return;
+      }
+
+      // Send notification to each resident
+      const promises = residents.map((resident) =>
+        this.sendToUser(
+          resident.user_id,
+          {
+            title: "👋 Visitor Checked Out",
+            body: `${visitorData.visitor_name} has left the premises`,
+          },
+          {
+            type: "visitor_checkout",
+            visitor_id: visitorData.visitor_id,
+            visitor_name: visitorData.visitor_name,
+            flat_id: flatId,
+          }
+        )
+      );
+
+      await Promise.all(promises);
+      logger.info(
+        `Notified ${residents.length} residents about check-out: ${visitorData.visitor_id}`
+      );
+    } catch (error) {
+      logger.error("Error notifying visitor check-out:", error);
+    }
+  }
+
+  /**
    * Send auto-rejection notification
    */
   async notifyAutoRejection(flatId, societyId, visitorData) {

@@ -28,9 +28,11 @@ router.post('/checkin', verifyFirebaseToken, async (req, res) => {
 
     // Verify visitor exists and is accepted
     const visitorResult = await client.query(
-      `SELECT v.*, f.id as flat_id
+      `SELECT v.*, f.id as flat_id, c.society_id
        FROM visitors v
        JOIN flats f ON v.flat_id = f.id
+       JOIN blocks b ON f.block_id = b.id
+       JOIN complexes c ON b.complex_id = c.id
        WHERE v.id = $1`,
       [visitor_id]
     );
@@ -105,6 +107,11 @@ router.post('/checkin', verifyFirebaseToken, async (req, res) => {
     const flatRoomName = `flat:${visitor.flat_id}`;
     io.to(flatRoomName).emit('visitor_checkin', checkinData);
 
+    // Also emit to society room (notify guards)
+    const societyRoomName = `society:${visitor.society_id}`;
+    io.to(societyRoomName).emit('visitor_checkin', checkinData);
+    logger.info(`📡 Emitted visitor_checkin to rooms: ${flatRoomName}, ${societyRoomName}`);
+
     // Send FCM push notification to residents
     notificationService.notifyVisitorCheckedIn(visitor.flat_id, {
       visitor_id: visitor_id,
@@ -149,9 +156,15 @@ router.post('/checkout', verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    // Get visit record
+    // Get visit record with visitor, flat, and society details
     const visitResult = await client.query(
-      'SELECT * FROM visits WHERE id = $1',
+      `SELECT v.*, vis.visitor_name, vis.flat_id, c.society_id
+       FROM visits v
+       JOIN visitors vis ON v.visitor_id = vis.id
+       JOIN flats f ON vis.flat_id = f.id
+       JOIN blocks b ON f.block_id = b.id
+       JOIN complexes c ON b.complex_id = c.id
+       WHERE v.id = $1`,
       [visit_id]
     );
 
@@ -198,6 +211,30 @@ router.post('/checkout', verifyFirebaseToken, async (req, res) => {
     );
 
     await client.query('COMMIT');
+
+    // Prepare check-out notification data
+    const checkoutData = {
+      visitor_id: visit.visitor_id,
+      visitor_name: visit.visitor_name,
+      visit_id: visit_id,
+      checkout_time: updatedVisit.checkout_time,
+    };
+
+    // Emit Socket.io event to flat room (notify residents)
+    const io = req.app.get('io');
+    const flatRoomName = `flat:${visit.flat_id}`;
+    io.to(flatRoomName).emit('visitor_checkout', checkoutData);
+
+    // Also emit to society room (notify guards)
+    const societyRoomName = `society:${visit.society_id}`;
+    io.to(societyRoomName).emit('visitor_checkout', checkoutData);
+    logger.info(`📡 Emitted visitor_checkout to rooms: ${flatRoomName}, ${societyRoomName}`);
+
+    // Send FCM push notification to residents
+    notificationService.notifyVisitorCheckedOut(visit.flat_id, {
+      visitor_id: visit.visitor_id,
+      visitor_name: visit.visitor_name,
+    }).catch(err => logger.error('Failed to send check-out notification:', err));
 
     logger.info(`✅ Visitor checked out: visit_id=${visit_id}`);
 

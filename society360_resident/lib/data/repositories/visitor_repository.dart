@@ -117,7 +117,8 @@ class VisitorRepository {
           if (expectedStart == null) return false;
 
           final visitDateTime = DateTime.parse(expectedStart);
-          return visitDateTime.isAfter(todayStart) && visitDateTime.isBefore(todayEnd);
+          // Use >= and < comparison to include visitors at the start of the day
+          return !visitDateTime.isBefore(todayStart) && visitDateTime.isBefore(todayEnd);
         }).toList();
 
         // Sort by expected time (latest first)
