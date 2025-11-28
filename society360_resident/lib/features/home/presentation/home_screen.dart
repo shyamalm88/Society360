@@ -444,10 +444,6 @@ class HomeTabScreen extends ConsumerWidget {
 
                   // Recent Activity
                   _buildRecentActivityCard().animate().fadeIn(delay: 400.ms),
-                  const SizedBox(height: 24),
-
-                  // Society Info
-                  _buildSocietyInfoCard(societyName).animate().fadeIn(delay: 500.ms),
                 ]),
               ),
             ),
@@ -460,10 +456,11 @@ class HomeTabScreen extends ConsumerWidget {
   Widget _buildQuickActions(BuildContext context) {
     final actions = [
       {
-        'icon': Icons.qr_code_scanner,
+        'icon': Icons.qr_code_scanner_rounded,
         'label': 'Guest Pass',
         'subtitle': 'Create QR code',
-        'color': AppTheme.accentBlue,
+        'color': const Color(0xFF0EA5E9), // Sky Blue
+        'bgColor': const Color(0xFFE0F2FE),
         'onTap': () {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const CreateGuestPassScreen()),
@@ -471,10 +468,11 @@ class HomeTabScreen extends ConsumerWidget {
         },
       },
       {
-        'icon': Icons.groups,
+        'icon': Icons.groups_rounded,
         'label': 'Visitors',
         'subtitle': 'Manage guests',
-        'color': AppTheme.accentCyan,
+        'color': const Color(0xFF8B5CF6), // Purple
+        'bgColor': const Color(0xFFF3E8FF),
         'onTap': () {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const MyVisitorsScreen()),
@@ -482,19 +480,21 @@ class HomeTabScreen extends ConsumerWidget {
         },
       },
       {
-        'icon': Icons.phone_in_talk,
+        'icon': Icons.phone_in_talk_rounded,
         'label': 'Emergency',
         'subtitle': 'Quick contacts',
-        'color': AppTheme.errorRed,
+        'color': const Color(0xFFEF4444), // Red
+        'bgColor': const Color(0xFFFEE2E2),
         'onTap': () {
           // TODO: Navigate to emergency contacts
         },
       },
       {
-        'icon': Icons.campaign,
+        'icon': Icons.campaign_rounded,
         'label': 'Notices',
         'subtitle': 'Society updates',
-        'color': AppTheme.warningAmber,
+        'color': const Color(0xFFF59E0B), // Amber
+        'bgColor': const Color(0xFFFEF3C7),
         'onTap': () {
           // TODO: Navigate to notices
         },
@@ -526,60 +526,73 @@ class HomeTabScreen extends ConsumerWidget {
           itemCount: actions.length,
           itemBuilder: (context, index) {
             final action = actions[index];
-            return InkWell(
-              onTap: action['onTap'] as VoidCallback?,
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFE8ECF4),
-                    width: 1,
+            final color = action['color'] as Color;
+            final bgColor = action['bgColor'] as Color;
+
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: action['onTap'] as VoidCallback?,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFE5E7EB),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: (action['color'] as Color).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        action['icon'] as IconData,
-                        color: action['color'] as Color,
-                        size: 24,
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          action['label'] as String,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1D1F),
-                            letterSpacing: -0.1,
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          action['subtitle'] as String,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF6F767E),
-                            letterSpacing: 0.1,
-                          ),
+                        child: Icon(
+                          action['icon'] as IconData,
+                          color: color,
+                          size: 24,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            action['label'] as String,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF111827),
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            action['subtitle'] as String,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -672,14 +685,33 @@ class HomeTabScreen extends ConsumerWidget {
               _buildEmptyState()
             else
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFE8ECF4),
-                    width: 1,
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFFFFFFFF),
+                      Color(0xFFFAFBFC),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFE8ECF4).withOpacity(0.6),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6366F1).withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
                   children: [
@@ -1416,142 +1448,88 @@ class HomeTabScreen extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const VisitorApprovalsScreen(),
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppTheme.warningAmber.withOpacity(0.1),
-              AppTheme.primaryOrange.withOpacity(0.1),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const VisitorApprovalsScreen(),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFDC2626), // Flat vibrant red
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
             ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: AppTheme.warningAmber.withOpacity(0.3),
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.warningAmber.withOpacity(0.2),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppTheme.warningAmber,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.warningAmber.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.person_add_alt_1,
-                color: Colors.white,
-                size: 28,
-              ),
-            )
-                .animate(
-                  onPlay: (controller) => controller.repeat(),
-                )
-                .shimmer(
-                  duration: 2000.ms,
-                  color: Colors.white.withOpacity(0.3),
-                )
-                .shake(
-                  duration: 1500.ms,
-                  delay: 500.ms,
-                  hz: 2,
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Pending Approvals',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1D1F),
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$pendingCount visitor${pendingCount > 1 ? 's' : ''} waiting for approval',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF6F767E),
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                ],
+                child: const Icon(
+                  Icons.notifications_active_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
-            ),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppTheme.warningAmber,
-                shape: BoxShape.circle,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pending Approvals',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$pendingCount visitor${pendingCount > 1 ? 's' : ''} waiting',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Center(
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: Text(
                   '$pendingCount',
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: -0.2,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFDC2626),
                   ),
                 ),
               ),
-            )
-                .animate(
-                  onPlay: (controller) => controller.repeat(),
-                )
-                .scale(
-                  duration: 1000.ms,
-                  begin: const Offset(1.0, 1.0),
-                  end: const Offset(1.15, 1.15),
-                  curve: Curves.easeInOut,
-                )
-                .then()
-                .scale(
-                  duration: 1000.ms,
-                  begin: const Offset(1.15, 1.15),
-                  end: const Offset(1.0, 1.0),
-                  curve: Curves.easeInOut,
-                ),
-            const SizedBox(width: 4),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 18,
-              color: Color(0xFF6F767E),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

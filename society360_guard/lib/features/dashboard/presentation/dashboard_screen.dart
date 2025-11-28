@@ -515,112 +515,123 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.push('/visitor-approvals'),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.successGreen.withOpacity(0.05),
-                  AppTheme.primaryOrange.withOpacity(0.02),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.successGreen.withOpacity(0.2),
-                width: 1.5,
-              ),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFE5E7EB),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Container(
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3E8FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.how_to_vote_rounded,
+                    color: Color(0xFF8B5CF6),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Visitor Approvals',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF111827),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Manage pending requests',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => context.push('/visitor-approvals'),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: AppTheme.successGreen.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        color: const Color(0xFF8B5CF6),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
-                        Icons.how_to_vote,
-                        color: AppTheme.successGreen,
-                        size: 24,
+                        Icons.arrow_forward_rounded,
+                        size: 18,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Visitor Approvals',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1D1F),
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Tap to view all approvals',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF6F767E),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.arrow_forward_ios,
-                      size: 16,
-                      color: Color(0xFF6F767E),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildApprovalCountBadge(
-                        label: 'Approved',
-                        count: approvedCount,
-                        icon: Icons.check_circle,
-                        color: AppTheme.successGreen,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildApprovalCountBadge(
-                        label: 'Rejected',
-                        count: rejectedCount,
-                        icon: Icons.cancel,
-                        color: AppTheme.errorRed,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildApprovalCountBadge(
-                        label: 'Timeout',
-                        count: autoRejectedCount,
-                        icon: Icons.timer_off,
-                        color: AppTheme.warningAmber,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildApprovalCountBadge(
+                    label: 'Approved',
+                    count: approvedCount,
+                    icon: Icons.check_circle_rounded,
+                    color: const Color(0xFF10B981),
+                    bgColor: const Color(0xFFD1FAE5),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildApprovalCountBadge(
+                    label: 'Rejected',
+                    count: rejectedCount,
+                    icon: Icons.cancel_rounded,
+                    color: const Color(0xFFEF4444),
+                    bgColor: const Color(0xFFFEE2E2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildApprovalCountBadge(
+                    label: 'Timeout',
+                    count: autoRejectedCount,
+                    icon: Icons.schedule_rounded,
+                    color: const Color(0xFFF59E0B),
+                    bgColor: const Color(0xFFFEF3C7),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -631,26 +642,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     required int count,
     required IconData icon,
     required Color color,
+    required Color bgColor,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: color.withOpacity(0.2),
           width: 1,
         ),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(height: 6),
+          Icon(
+            icon,
+            size: 24,
+            color: color,
+          ),
+          const SizedBox(height: 8),
           Text(
             count.toString(),
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
               color: color,
               height: 1,
             ),
@@ -658,12 +675,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 10,
+            style: TextStyle(
+              fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF6F767E),
-              letterSpacing: 0.1,
+              color: color,
+              letterSpacing: 0.3,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -952,31 +972,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   Widget _buildQuickActionsGrid(BuildContext context) {
     final actions = [
       {
-        'icon': Icons.person_add_outlined,
+        'icon': Icons.person_add_rounded,
         'label': 'New Entry',
         'subtitle': 'Register visitor',
-        'color': const Color(0xFF3B82F6),
+        'color': const Color(0xFF0EA5E9), // Sky Blue
+        'bgColor': const Color(0xFFE0F2FE),
         'onTap': () => context.push('/visitor-entry'),
       },
       {
-        'icon': Icons.check_circle_outline,
+        'icon': Icons.check_circle_rounded,
         'label': 'Approvals',
         'subtitle': 'View status',
-        'color': const Color(0xFF10B981),
+        'color': const Color(0xFF10B981), // Green
+        'bgColor': const Color(0xFFD1FAE5),
         'onTap': () => context.push('/visitor-approvals'),
       },
       {
-        'icon': Icons.qr_code_scanner_outlined,
+        'icon': Icons.qr_code_scanner_rounded,
         'label': 'Scan QR',
         'subtitle': 'Quick check-in',
-        'color': const Color(0xFFF59E0B),
+        'color': const Color(0xFFF59E0B), // Amber
+        'bgColor': const Color(0xFFFEF3C7),
         'onTap': () => _showQRScanner(context),
       },
       {
-        'icon': Icons.search,
+        'icon': Icons.search_rounded,
         'label': 'Search',
         'subtitle': 'Find visitor',
-        'color': const Color(0xFF8B5CF6),
+        'color': const Color(0xFF8B5CF6), // Purple
+        'bgColor': const Color(0xFFF3E8FF),
         'onTap': () => _showSearchDialog(context),
       },
     ];
@@ -988,63 +1012,80 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          childAspectRatio: 1.5,
+          childAspectRatio: 1.3,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
         itemCount: actions.length,
         itemBuilder: (context, index) {
           final action = actions[index];
-          return InkWell(
-            onTap: action['onTap'] as VoidCallback,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE8ECF4), width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: (action['color'] as Color).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      action['icon'] as IconData,
-                      size: 24,
-                      color: action['color'] as Color,
-                    ),
+          final color = action['color'] as Color;
+          final bgColor = action['bgColor'] as Color;
+
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: action['onTap'] as VoidCallback,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE5E7EB),
+                    width: 1,
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        action['label'] as String,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1D1F),
-                          letterSpacing: -0.1,
-                        ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        action['subtitle'] as String,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF6F767E),
-                        ),
+                      child: Icon(
+                        action['icon'] as IconData,
+                        size: 24,
+                        color: color,
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          action['label'] as String,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF111827),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          action['subtitle'] as String,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           );

@@ -59,7 +59,34 @@ class AuthController extends _$AuthController {
       );
     });
 
-    print('🏗️ [AUTH BUILD] Returning initial state');
+    // Check if there's already a Firebase user (for hot reload support)
+    // Use synchronous check instead of async stream
+    final currentUser = _authService.currentUser;
+
+    if (currentUser != null) {
+      print('🔄 [AUTH BUILD] Existing Firebase user found: ${currentUser.uid}');
+      final isOnboarded = _storage.isOnboarded;
+      print('🔄 [AUTH BUILD] Local storage isOnboarded: $isOnboarded');
+
+      // Schedule auth check after build completes
+      Future.microtask(() {
+        if (!_isHandlingAuth) {
+          _handleAuthenticatedUser();
+        }
+      });
+
+      // Return appropriate initial state based on onboarding status
+      // This prevents navigation to login page during hot reload
+      if (isOnboarded) {
+        print('🏗️ [AUTH BUILD] Returning complete state (user logged in and onboarded)');
+        return AuthState.complete;
+      } else {
+        print('🏗️ [AUTH BUILD] Returning onboarding state (user logged in but not onboarded)');
+        return AuthState.onboarding;
+      }
+    }
+
+    print('🏗️ [AUTH BUILD] No existing user, returning initial state');
     return AuthState.initial;
   }
 
