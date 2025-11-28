@@ -26,6 +26,12 @@ class SocketService {
   /// Multiple callbacks for visitor checkout events
   final List<Function(Map<String, dynamic>)> _checkoutListeners = [];
 
+  /// Multiple callbacks for emergency alert events
+  final List<Function(Map<String, dynamic>)> _emergencyAlertListeners = [];
+
+  /// Multiple callbacks for emergency updated events
+  final List<Function(Map<String, dynamic>)> _emergencyUpdatedListeners = [];
+
   /// Legacy single callback for visitor approval events (deprecated)
   @Deprecated('Use addApprovalListener instead')
   Function(Map<String, dynamic>)? onVisitorApproval;
@@ -108,6 +114,34 @@ class SocketService {
   void removeCheckoutListener(Function(Map<String, dynamic>) listener) {
     _checkoutListeners.remove(listener);
     debugPrint('🗑️ Removed checkout listener (remaining: ${_checkoutListeners.length})');
+  }
+
+  /// Add a listener for emergency alert events
+  void addEmergencyAlertListener(Function(Map<String, dynamic>) listener) {
+    if (!_emergencyAlertListeners.contains(listener)) {
+      _emergencyAlertListeners.add(listener);
+      debugPrint('✅ Added emergency alert listener (total: ${_emergencyAlertListeners.length})');
+    }
+  }
+
+  /// Remove a listener for emergency alert events
+  void removeEmergencyAlertListener(Function(Map<String, dynamic>) listener) {
+    _emergencyAlertListeners.remove(listener);
+    debugPrint('🗑️ Removed emergency alert listener (remaining: ${_emergencyAlertListeners.length})');
+  }
+
+  /// Add a listener for emergency updated events
+  void addEmergencyUpdatedListener(Function(Map<String, dynamic>) listener) {
+    if (!_emergencyUpdatedListeners.contains(listener)) {
+      _emergencyUpdatedListeners.add(listener);
+      debugPrint('✅ Added emergency updated listener (total: ${_emergencyUpdatedListeners.length})');
+    }
+  }
+
+  /// Remove a listener for emergency updated events
+  void removeEmergencyUpdatedListener(Function(Map<String, dynamic>) listener) {
+    _emergencyUpdatedListeners.remove(listener);
+    debugPrint('🗑️ Removed emergency updated listener (remaining: ${_emergencyUpdatedListeners.length})');
   }
 
   /// Connect to Socket.io server
@@ -249,6 +283,36 @@ class SocketService {
             listener(eventData);
           } catch (e) {
             debugPrint('❌ Error in checkout listener: $e');
+          }
+        }
+      });
+
+      // Listen for emergency alert events
+      _socket!.on('emergency_alert', (data) {
+        debugPrint('🚨 Emergency alert received: $data');
+        final eventData = data as Map<String, dynamic>;
+
+        // Call all registered listeners
+        for (final listener in _emergencyAlertListeners) {
+          try {
+            listener(eventData);
+          } catch (e) {
+            debugPrint('❌ Error in emergency alert listener: $e');
+          }
+        }
+      });
+
+      // Listen for emergency updated events
+      _socket!.on('emergency_updated', (data) {
+        debugPrint('🔄 Emergency updated received: $data');
+        final eventData = data as Map<String, dynamic>;
+
+        // Call all registered listeners
+        for (final listener in _emergencyUpdatedListeners) {
+          try {
+            listener(eventData);
+          } catch (e) {
+            debugPrint('❌ Error in emergency updated listener: $e');
           }
         }
       });
