@@ -6,6 +6,363 @@ const logger = require("../config/logger");
 const notificationService = require("../services/notification_service");
 
 /**
+ * Generate a unique 6-digit alphanumeric access code
+ */
+function generateAccessCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding ambiguous chars (0, O, I, 1)
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * POST /visitors/guest-pass
+ * Create a pre-approved guest pass (by resident)
+ * Creates visitor entry with auto_approved=true and QR code
+ */
+router.post("/guest-pass", verifyFirebaseToken, async (req, res) => {
+  const client = await getClient();
+
+  try {
+    logger.info("📥 POST /visitors/guest-pass - Guest pass creation request received", {
+      body: req.body,
+      user_id: req.user?.id,
+      user_phone: req.user?.phone,
+      ip: req.ip,
+    });
+
+    await client.query("BEGIN");
+
+    const {
+      visitor_name,
+      phone,
+      purpose,
+      flat_id,
+      expected_start,
+      expected_end,
+      qr_code,
+      number_of_people,
+      idempotency_key,
+    } = req.body;
+
+    logger.info("📋 Extracted fields", {
+      visitor_name,
+      phone,
+      flat_id,
+      purpose,
+      qr_code,
+      number_of_people,
+      has_idempotency_key: !!idempotency_key,
+    });
+
+    // Validate required fields
+    if (!visitor_name || !phone || !flat_id || !qr_code) {
+      logger.warn("❌ Validation failed - missing required fields", {
+        has_visitor_name: !!visitor_name,
+        has_phone: !!phone,
+        has_flat_id: !!flat_id,
+        has_qr_code: !!qr_code,
+      });
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        success: false,
+        error: "visitor_name, phone, flat_id, and qr_code are required",
+      });
+    }
+
+    // Check idempotency
+    if (idempotency_key) {
+      const existingResult = await client.query(
+        "SELECT * FROM visitors WHERE idempotency_key = $1",
+        [idempotency_key]
+      );
+
+      if (existingResult.rows.length > 0) {
+        await client.query("COMMIT");
+        return res.json({
+          success: true,
+          data: existingResult.rows[0],
+          message: "Guest pass already exists (idempotent)",
+        });
+      }
+    }
+
+    // Check if QR code is unique
+    const qrCheck = await client.query(
+      "SELECT id FROM visitors WHERE qr_code = $1",
+      [qr_code]
+    );
+
+    if (qrCheck.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        success: false,
+        error: "QR code already exists",
+      });
+    }
+
+    // Generate unique access code
+    let accessCode;
+    let isUnique = false;
+    while (!isUnique) {
+      accessCode = generateAccessCode();
+      const codeCheck = await client.query(
+        "SELECT id FROM visitors WHERE access_code = $1",
+        [accessCode]
+      );
+      isUnique = codeCheck.rows.length === 0;
+    }
+
+    logger.info(`🎫 Generated access code: ${accessCode}`);
+
+    // Insert visitor with pending status (guard must approve after scanning QR/entering access code)
+    const visitorResult = await client.query(
+      `INSERT INTO visitors (
+        visitor_name, phone, purpose, invited_by, flat_id,
+        expected_start, expected_end, qr_code, access_code, number_of_people,
+        status, auto_approved, idempotency_key, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+      RETURNING *`,
+      [
+        visitor_name,
+        phone,
+        purpose || "guest",
+        req.user.id,
+        flat_id,
+        expected_start || new Date(),
+        expected_end || null,
+        qr_code,
+        accessCode,
+        number_of_people || 1,
+        "pending", // Guest pass requires guard approval at gate
+        false, // Not auto-approved - guard must verify
+        idempotency_key || null,
+      ]
+    );
+
+    const visitor = visitorResult.rows[0];
+
+    // Get flat and resident details
+    const flatDetailsResult = await client.query(
+      `SELECT
+        f.id as flat_id, f.flat_number, f.block_id,
+        b.name as block_name, b.complex_id,
+        c.name as complex_name, c.society_id,
+        s.name as society_name,
+        u.name as resident_name, u.phone as resident_phone
+       FROM flats f
+       JOIN blocks b ON f.block_id = b.id
+       JOIN complexes c ON b.complex_id = c.id
+       JOIN societies s ON c.society_id = s.id
+       LEFT JOIN users u ON u.id = $1
+       WHERE f.id = $2`,
+      [req.user.id, flat_id]
+    );
+
+    const flatDetails = flatDetailsResult.rows[0];
+
+    // Log audit
+    await client.query(
+      `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, now())`,
+      [
+        req.user.id,
+        "guest_pass_created",
+        "visitor",
+        visitor.id,
+        JSON.stringify({ visitor_name, flat_id, purpose, qr_code, number_of_people }),
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    logger.info(`✅ Guest pass created: ${visitor.id}, QR: ${qr_code}`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        visitor,
+        flat_details: flatDetails,
+      },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    logger.error("Error creating guest pass:", error);
+
+    // Handle unique constraint violations
+    if (error.code === '23505' && error.constraint === 'visitors_qr_code_key') {
+      return res.status(400).json({
+        success: false,
+        error: "QR code already exists",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to create guest pass",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * GET /visitors/by-qr/:qr_code
+ * Get visitor details by QR code (for guard scanning)
+ */
+router.get("/by-qr/:qr_code", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { qr_code } = req.params;
+
+    logger.info("🔍 GET /visitors/by-qr - QR code lookup", {
+      qr_code,
+      user_id: req.user?.id,
+    });
+
+    const result = await query(
+      `SELECT v.id, v.visitor_name, v.phone, v.vehicle_no, v.purpose,
+        v.flat_id, v.status, v.expected_start, v.expected_end, v.number_of_people,
+        v.auto_approved, v.created_at, v.invited_by, v.qr_code, v.access_code,
+        f.flat_number, b.name as block_name, c.name as complex_name,
+        u.name as invited_by_name, u.phone as invited_by_phone,
+        vis.id as visit_id, vis.checkin_time, vis.checkout_time
+      FROM visitors v
+      LEFT JOIN flats f ON v.flat_id = f.id
+      LEFT JOIN blocks b ON f.block_id = b.id
+      LEFT JOIN complexes c ON b.complex_id = c.id
+      LEFT JOIN users u ON v.invited_by = u.id
+      LEFT JOIN visits vis ON v.id = vis.visitor_id AND vis.checkout_time IS NULL
+      WHERE v.qr_code = $1`,
+      [qr_code]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Guest pass not found",
+      });
+    }
+
+    const visitor = result.rows[0];
+
+    // Check if guest pass is within valid time window
+    if (visitor.expected_start && visitor.expected_end) {
+      const now = new Date();
+      const startDate = new Date(visitor.expected_start);
+      const endDate = new Date(visitor.expected_end);
+
+      if (now < startDate) {
+        return res.status(400).json({
+          success: false,
+          error: "Guest pass is not yet valid. Please use manual visitor entry.",
+          error_code: "NOT_YET_VALID",
+          data: visitor,
+        });
+      }
+
+      if (now > endDate) {
+        return res.status(400).json({
+          success: false,
+          error: "Guest pass has expired. Please use manual visitor entry.",
+          error_code: "EXPIRED",
+          data: visitor,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: visitor,
+    });
+  } catch (error) {
+    logger.error("Error fetching visitor by QR code:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch visitor details",
+    });
+  }
+});
+
+/**
+ * GET /visitors/by-access-code/:access_code
+ * Get visitor details by access code (for manual entry by guard)
+ */
+router.get("/by-access-code/:access_code", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { access_code } = req.params;
+
+    logger.info("🔍 GET /visitors/by-access-code - Access code lookup", {
+      access_code,
+      user_id: req.user?.id,
+    });
+
+    const result = await query(
+      `SELECT v.id, v.visitor_name, v.phone, v.vehicle_no, v.purpose,
+        v.flat_id, v.status, v.expected_start, v.expected_end, v.number_of_people,
+        v.auto_approved, v.created_at, v.invited_by, v.qr_code, v.access_code,
+        f.flat_number, b.name as block_name, c.name as complex_name,
+        u.name as invited_by_name, u.phone as invited_by_phone,
+        vis.id as visit_id, vis.checkin_time, vis.checkout_time
+      FROM visitors v
+      LEFT JOIN flats f ON v.flat_id = f.id
+      LEFT JOIN blocks b ON f.block_id = b.id
+      LEFT JOIN complexes c ON b.complex_id = c.id
+      LEFT JOIN users u ON v.invited_by = u.id
+      LEFT JOIN visits vis ON v.id = vis.visitor_id AND vis.checkout_time IS NULL
+      WHERE UPPER(v.access_code) = UPPER($1)`,
+      [access_code]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Guest pass not found with this access code",
+      });
+    }
+
+    const visitor = result.rows[0];
+
+    // Check if guest pass is within valid time window
+    if (visitor.expected_start && visitor.expected_end) {
+      const now = new Date();
+      const startDate = new Date(visitor.expected_start);
+      const endDate = new Date(visitor.expected_end);
+
+      if (now < startDate) {
+        return res.status(400).json({
+          success: false,
+          error: "Guest pass is not yet valid. Please use manual visitor entry.",
+          error_code: "NOT_YET_VALID",
+          data: visitor,
+        });
+      }
+
+      if (now > endDate) {
+        return res.status(400).json({
+          success: false,
+          error: "Guest pass has expired. Please use manual visitor entry.",
+          error_code: "EXPIRED",
+          data: visitor,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: visitor,
+    });
+  } catch (error) {
+    logger.error("Error fetching visitor by access code:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch visitor details",
+    });
+  }
+});
+
+/**
  * POST /visitors
  * Create a new visitor entry (typically by guard)
  * Emits Socket.io event + sends FCM push notification to residents
@@ -286,7 +643,10 @@ router.get("/pending-count", verifyFirebaseToken, async (req, res) => {
     const result = await query(
       `SELECT COUNT(*) as count
        FROM visitors
-       WHERE flat_id = $1 AND status = 'pending'`,
+       WHERE flat_id = $1
+         AND status = 'pending'
+         AND qr_code IS NULL
+         AND access_code IS NULL`,
       [flat_id]
     );
 
@@ -481,6 +841,31 @@ router.post(
 
       const visitor = visitorResult.rows[0];
 
+      // Check if guest pass is within valid time window (for accept decision)
+      if (decision === "accept" && visitor.expected_start && visitor.expected_end) {
+        const now = new Date();
+        const startDate = new Date(visitor.expected_start);
+        const endDate = new Date(visitor.expected_end);
+
+        if (now < startDate) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            success: false,
+            error: "Guest pass is not yet valid. Please use manual visitor entry.",
+            error_code: "NOT_YET_VALID",
+          });
+        }
+
+        if (now > endDate) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            success: false,
+            error: "Guest pass has expired. Please use manual visitor entry.",
+            error_code: "EXPIRED",
+          });
+        }
+      }
+
       // Update visitor status
       const newStatus = decision === "accept" ? "accepted" : "denied";
       await client.query(
@@ -607,7 +992,8 @@ router.get("/pending", verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Get all pending visitors for user's flats
+    // Get pending visitors for user's flats (excluding guest passes)
+    // Guest passes are pre-approved by resident and only need guard verification
     const result = await query(
       `SELECT DISTINCT ON (v.id)
         v.id, v.visitor_name, v.phone, v.purpose, v.vehicle_no,
@@ -623,6 +1009,8 @@ router.get("/pending", verifyFirebaseToken, async (req, res) => {
        WHERE fo.user_id = $1
          AND fo.end_date IS NULL
          AND v.status = 'pending'
+         AND v.qr_code IS NULL
+         AND v.access_code IS NULL
        ORDER BY v.id, v.created_at DESC`,
       [userId]
     );

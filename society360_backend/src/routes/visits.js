@@ -16,14 +16,34 @@ router.post('/checkin', verifyFirebaseToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const { visitor_id, guard_id, checkin_method, notes } = req.body;
+    const { visitor_id, checkin_method, notes } = req.body;
 
-    if (!visitor_id || !guard_id) {
+    if (!visitor_id) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
-        error: 'visitor_id and guard_id are required',
+        error: 'visitor_id is required',
       });
+    }
+
+    // Get guard_id - either from request body or lookup from guards table using user_id
+    let guard_id = req.body.guard_id;
+
+    if (!guard_id) {
+      const guardResult = await client.query(
+        'SELECT id FROM guards WHERE user_id = $1 AND active = true',
+        [req.user.id]
+      );
+
+      if (guardResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          success: false,
+          error: 'No active guard found for authenticated user',
+        });
+      }
+
+      guard_id = guardResult.rows[0].id;
     }
 
     // Verify visitor exists and is accepted

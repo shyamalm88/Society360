@@ -10,6 +10,7 @@ import '../../../core/services/app_initialization_service.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/services/socket_service_provider.dart';
 import '../../emergencies/presentation/emergencies_screen.dart';
+import '../../guest_pass/presentation/qr_scanner_screen.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -1504,97 +1505,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   }
 
   void _showQRScanner(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8ECF4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.qr_code_scanner, color: Color(0xFF10B981), size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Scan QR Code',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1D1F),
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 250,
-                      height: 250,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF10B981), width: 2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.qr_code_scanner, size: 100, color: Color(0xFFE8ECF4)),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Position QR code within frame',
-                      style: TextStyle(fontSize: 14, color: Color(0xFF6F767E), fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('QR Code scanned successfully!')),
-                        );
-                      },
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Open Camera Scanner'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const QrScannerScreen(),
       ),
     );
   }

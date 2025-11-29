@@ -155,8 +155,8 @@ final apiClientWithTokenProvider = FutureProvider<ApiClient>((ref) async {
   String? token;
   if (firebaseUser != null) {
     try {
-      // Get fresh ID token
-      token = await firebaseUser.getIdToken();
+      // Get fresh ID token - force refresh to avoid using expired cached tokens
+      token = await firebaseUser.getIdToken(true);
       debugPrint('🔐 Firebase token fetched successfully');
     } catch (e) {
       debugPrint('❌ Failed to get Firebase token: $e');

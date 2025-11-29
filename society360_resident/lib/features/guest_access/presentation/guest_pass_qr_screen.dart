@@ -1,6 +1,12 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../config/theme.dart';
 
 class GuestPassQrScreen extends StatelessWidget {
@@ -10,8 +16,12 @@ class GuestPassQrScreen extends StatelessWidget {
   final DateTime validFrom;
   final DateTime validUntil;
   final String qrCode;
+  final String accessCode;
 
-  const GuestPassQrScreen({
+  // GlobalKey for capturing QR code as image
+  final GlobalKey _qrKey = GlobalKey();
+
+  GuestPassQrScreen({
     super.key,
     required this.guestName,
     required this.guestPhone,
@@ -19,7 +29,54 @@ class GuestPassQrScreen extends StatelessWidget {
     required this.validFrom,
     required this.validUntil,
     required this.qrCode,
+    required this.accessCode,
   });
+
+  Future<void> _shareGuestPass() async {
+    try {
+      final validFromFormatted = DateFormat('dd MMM yyyy, hh:mm a').format(validFrom);
+      final validUntilFormatted = DateFormat('dd MMM yyyy, hh:mm a').format(validUntil);
+
+      // Capture QR code as image
+      final RenderRepaintBoundary boundary =
+          _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      final Uint8List pngBytes = byteData!.buffer.asUint8List();
+
+      // Save to temporary file
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/guest_pass_qr.png');
+      await file.writeAsBytes(pngBytes);
+
+      final message = '''
+🎫 Society360 Guest Pass
+
+ACCESS CODE: $accessCode
+
+Guest Name: $guestName
+Phone: $guestPhone
+Purpose: $purpose
+
+Valid From: $validFromFormatted
+Valid Until: $validUntilFormatted
+
+Show this QR code at the gate or share the access code with the guard.
+
+Powered by Society360
+    ''';
+
+      // Share image with message
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: message,
+        subject: 'Guest Pass for $guestName',
+      );
+    } catch (e) {
+      debugPrint('❌ Error sharing guest pass: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +86,8 @@ class GuestPassQrScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () {
-              // TODO: Share QR code
-            },
+            onPressed: _shareGuestPass,
+            tooltip: 'Share Guest Pass',
           ),
         ],
       ),
@@ -87,23 +143,76 @@ class GuestPassQrScreen extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // QR Code
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: QrImageView(
-                      data: qrCode,
-                      version: QrVersions.auto,
-                      size: 250,
-                      backgroundColor: Colors.white,
-                      errorCorrectionLevel: QrErrorCorrectLevel.H,
-                      embeddedImage: const AssetImage('assets/logo.png'),
-                      embeddedImageStyle: const QrEmbeddedImageStyle(
-                        size: Size(40, 40),
+                  // QR Code with RepaintBoundary for capturing as image
+                  RepaintBoundary(
+                    key: _qrKey,
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
                       ),
+                      child: QrImageView(
+                        data: qrCode,
+                        version: QrVersions.auto,
+                        size: 250,
+                        backgroundColor: Colors.white,
+                        errorCorrectionLevel: QrErrorCorrectLevel.H,
+                        embeddedImage: const AssetImage('assets/logo.png'),
+                        embeddedImageStyle: const QrEmbeddedImageStyle(
+                          size: Size(40, 40),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Access Code Display
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primaryOrange.withOpacity(0.1),
+                          AppTheme.accentBlue.withOpacity(0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryOrange.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Access Code',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          accessCode,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryOrange,
+                            letterSpacing: 4,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Share this code with guard',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
@@ -159,29 +268,31 @@ class GuestPassQrScreen extends StatelessWidget {
             const SizedBox(height: 32),
 
             // Action Buttons
-            Row(
+            Column(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      // TODO: Download QR code
-                    },
-                    icon: const Icon(Icons.download),
-                    label: const Text('Download'),
-                    style: OutlinedButton.styleFrom(
+                // Share Button - Primary Action
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _shareGuestPass,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share Guest Pass'),
+                    style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
+                const SizedBox(height: 12),
+                // Go Home Button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
                     onPressed: () {
                       Navigator.of(context).popUntil((route) => route.isFirst);
                     },
                     icon: const Icon(Icons.home),
-                    label: const Text('Go Home'),
-                    style: ElevatedButton.styleFrom(
+                    label: const Text('Go to Home'),
+                    style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),

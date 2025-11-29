@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../config/theme.dart';
+import '../../../core/api/api_client.dart';
+import '../../../core/storage/storage_service.dart';
 import 'guest_pass_qr_screen.dart';
 
 class CreateGuestPassScreen extends ConsumerStatefulWidget {
@@ -20,6 +23,7 @@ class _CreateGuestPassScreenState
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _purposeController = TextEditingController();
+  final _numberOfPeopleController = TextEditingController(text: '1');
 
   DateTime _validFrom = DateTime.now();
   DateTime _validUntil = DateTime.now().add(const Duration(days: 1));
@@ -38,6 +42,7 @@ class _CreateGuestPassScreenState
     _nameController.dispose();
     _phoneController.dispose();
     _purposeController.dispose();
+    _numberOfPeopleController.dispose();
     super.dispose();
   }
 
@@ -87,30 +92,95 @@ class _CreateGuestPassScreenState
       _isSubmitting = true;
     });
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      // Get flat_id from storage
+      final storageService = ref.read(storageServiceProvider);
+      final flatId = storageService.flatId;
 
-    // Generate QR code data
-    final qrCode = const Uuid().v4();
+      if (flatId == null) {
+        throw Exception('Flat information not found. Please complete onboarding.');
+      }
 
-    if (mounted) {
-      setState(() {
-        _isSubmitting = false;
-      });
+      // Verify user is authenticated
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('User not authenticated');
+      }
 
-      // Navigate to QR screen
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => GuestPassQrScreen(
-            guestName: _nameController.text,
-            guestPhone: '+91${_phoneController.text}',
-            purpose: _purposeController.text,
-            validFrom: _validFrom,
-            validUntil: _validUntil,
-            qrCode: qrCode,
-          ),
-        ),
+      // Generate QR code
+      final qrCode = const Uuid().v4();
+
+      // Get API client with fresh auth token
+      final apiClientWithToken = await ref.read(apiClientWithTokenProvider.future);
+
+      final requestData = {
+        'visitor_name': _nameController.text,
+        'phone': '+91${_phoneController.text}',
+        'purpose': _purposeController.text,
+        'flat_id': flatId,
+        'expected_start': _validFrom.toIso8601String(),
+        'expected_end': _validUntil.toIso8601String(),
+        'qr_code': qrCode,
+        'number_of_people': int.tryParse(_numberOfPeopleController.text) ?? 1,
+      };
+
+      debugPrint('📤 Creating guest pass: $requestData');
+
+      // Call backend API with token
+      final response = await apiClientWithToken.post(
+        '/visitors/guest-pass',
+        data: requestData,
       );
+
+      debugPrint('✅ Guest pass created successfully: ${response.data}');
+
+      // Extract access code from response
+      final accessCode = response.data['data']?['visitor']?['access_code'] ?? '';
+      debugPrint('🎫 Access code: $accessCode');
+
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Guest pass created successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Navigate to QR screen
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => GuestPassQrScreen(
+              guestName: _nameController.text,
+              guestPhone: '+91${_phoneController.text}',
+              purpose: _purposeController.text,
+              validFrom: _validFrom,
+              validUntil: _validUntil,
+              qrCode: qrCode,
+              accessCode: accessCode,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error creating guest pass: $e');
+
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to create guest pass: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -207,6 +277,38 @@ class _CreateGuestPassScreenState
                   }
                   if (value.length != 10) {
                     return 'Enter valid 10 digit number';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              // Number of People
+              const Text(
+                'Number of People *',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _numberOfPeopleController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  hintText: 'Approximate number of people',
+                  prefixIcon: Icon(Icons.people, color: AppTheme.accentBlue),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Number of people is required';
+                  }
+                  final number = int.tryParse(value);
+                  if (number == null || number < 1) {
+                    return 'Please enter a valid number';
                   }
                   return null;
                 },

@@ -70,6 +70,9 @@ dependencies:
   # Ringtone Player (for alarm sounds)
   flutter_ringtone_player: ^4.0.0+3
 
+  # QR Code Scanner
+  mobile_scanner: ^6.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
