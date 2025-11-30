@@ -63,6 +63,59 @@ router.get('/me', verifyFirebaseToken, async (req, res) => {
       [userId]
     );
 
+    // Check if user is also an admin (admin portal access)
+    let adminInfo = null;
+    const adminCheck = await query(
+      `SELECT au.id as admin_user_id, au.email as admin_email, au.is_active
+       FROM admin_users au
+       WHERE au.user_id = $1 AND au.is_active = true`,
+      [userId]
+    );
+
+    if (adminCheck.rows.length > 0) {
+      // User is an admin - get their admin roles
+      const adminRolesResult = await query(
+        `SELECT ra.role, ra.scope_type, ra.scope_id, s.name as society_name, s.id as society_id
+         FROM role_assignments ra
+         LEFT JOIN societies s ON ra.scope_type = 'society' AND ra.scope_id = s.id
+         WHERE ra.user_id = $1 AND ra.revoked = false
+           AND ra.role IN ('super_admin', 'society_admin', 'block_admin')`,
+        [userId]
+      );
+
+      // Determine admin type and default route
+      const adminRoles = adminRolesResult.rows;
+      let adminType = null;
+      let defaultAdminRoute = null;
+
+      if (adminRoles.some(r => r.role === 'super_admin')) {
+        adminType = 'super_admin';
+        defaultAdminRoute = '/saas-dashboard';
+      } else if (adminRoles.some(r => r.role === 'society_admin')) {
+        adminType = 'society_admin';
+        defaultAdminRoute = '/society-dashboard';
+      } else if (adminRoles.some(r => r.role === 'block_admin')) {
+        adminType = 'block_admin';
+        defaultAdminRoute = '/society-dashboard';
+      }
+
+      // Get societies this admin has access to
+      const adminSocieties = adminRoles
+        .filter(r => r.society_id)
+        .map(r => ({ id: r.society_id, name: r.society_name }));
+
+      adminInfo = {
+        is_admin: true,
+        admin_user_id: adminCheck.rows[0].admin_user_id,
+        admin_email: adminCheck.rows[0].admin_email,
+        admin_type: adminType,
+        admin_roles: adminRoles,
+        admin_societies: adminSocieties,
+        default_admin_route: defaultAdminRoute,
+        admin_portal_url: process.env.ADMIN_PORTAL_URL || 'http://localhost:5173',
+      };
+    }
+
     res.json({
       success: true,
       data: {
@@ -80,6 +133,7 @@ router.get('/me', verifyFirebaseToken, async (req, res) => {
         flat: flatResult.rows[0] || null,
         guard: guardResult.rows[0] || null,
         recent_notifications: notificationsResult.rows,
+        admin: adminInfo,
       },
     });
   } catch (error) {

@@ -22,6 +22,15 @@ const profileRoutes = require('./routes/profile');
 const fcmRoutes = require('./routes/fcm');
 const emergencyRoutes = require('./routes/emergencies');
 
+// Admin Portal routes
+const adminAuthRoutes = require('./routes/adminAuth');
+const adminSocietiesRoutes = require('./routes/adminSocieties');
+const adminDashboardRoutes = require('./routes/adminDashboard');
+const adminEmergenciesRoutes = require('./routes/adminEmergencies');
+const adminApprovalsRoutes = require('./routes/adminApprovals');
+const noticesRoutes = require('./routes/notices');
+const complaintsRoutes = require('./routes/complaints');
+
 // Initialize Express app
 const app = express();
 const httpServer = createServer(app);
@@ -96,6 +105,15 @@ app.use(`/${API_VERSION}`, residentRoutes); // Also mount at root for /my-flats 
 app.use(`/${API_VERSION}/profile`, profileRoutes);
 app.use(`/${API_VERSION}`, fcmRoutes);
 app.use(`/${API_VERSION}/emergencies`, emergencyRoutes);
+
+// Admin Portal API Routes
+app.use(`/${API_VERSION}/admin/auth`, adminAuthRoutes);
+app.use(`/${API_VERSION}/admin/societies`, adminSocietiesRoutes);
+app.use(`/${API_VERSION}/admin/dashboard`, adminDashboardRoutes);
+app.use(`/${API_VERSION}/admin/emergencies`, adminEmergenciesRoutes);
+app.use(`/${API_VERSION}/admin/approvals`, adminApprovalsRoutes);
+app.use(`/${API_VERSION}/notices`, noticesRoutes);
+app.use(`/${API_VERSION}/complaints`, complaintsRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {

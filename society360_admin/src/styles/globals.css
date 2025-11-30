@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 24 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 24 10% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 24 10% 10%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 38 30% 96%;
+    --secondary-foreground: 24 10% 10%;
+    --muted: 38 30% 96%;
+    --muted-foreground: 24 10% 40%;
+    --accent: 38 30% 96%;
+    --accent-foreground: 24 10% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 38 20% 90%;
+    --input: 38 20% 90%;
+    --ring: 38 92% 50%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 24 10% 6%;
+    --foreground: 38 30% 98%;
+    --card: 24 10% 6%;
+    --card-foreground: 38 30% 98%;
+    --popover: 24 10% 6%;
+    --popover-foreground: 38 30% 98%;
+    --primary: 43 96% 56%;
+    --primary-foreground: 24 10% 10%;
+    --secondary: 24 10% 15%;
+    --secondary-foreground: 38 30% 98%;
+    --muted: 24 10% 15%;
+    --muted-foreground: 38 20% 65%;
+    --accent: 24 10% 15%;
+    --accent-foreground: 38 30% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 38 30% 98%;
+    --border: 24 10% 15%;
+    --input: 24 10% 15%;
+    --ring: 43 96% 56%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/50;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer utilities {
+  /* Mobile touch targets - minimum 44px */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* Glass effect for cards */
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+  .glass-dark {
+    @apply bg-slate-900/80 backdrop-blur-md border border-slate-700/50;
+  }
+
+  /* Gradient backgrounds */
+  .gradient-primary {
+    @apply bg-gradient-to-r from-primary-600 to-primary-500;
+  }
+
+  .gradient-accent {
+    @apply bg-gradient-to-r from-accent-600 to-accent-500;
+  }
+
+  /* Status badges */
+  .status-open {
+    @apply bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400;
+  }
+
+  .status-in-progress {
+    @apply bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400;
+  }
+
+  .status-resolved {
+    @apply bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400;
+  }
+
+  .status-closed {
+    @apply bg-slate-100 text-slate-800 dark:bg-slate-800/30 dark:text-slate-400;
+  }
+
+  /* Priority badges */
+  .priority-low {
+    @apply bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300;
+  }
+
+  .priority-medium {
+    @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400;
+  }
+
+  .priority-high {
+    @apply bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400;
+  }
+
+  .priority-critical {
+    @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
+  }
+
+  /* Panic alert animation */
+  .panic-alert {
+    animation: panic-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes panic-pulse {
+    0%, 100% {
+      @apply bg-red-500;
+    }
+    50% {
+      @apply bg-red-700;
+    }
+  }
+}
+
+/* Mobile card view for tables */
+@media (max-width: 768px) {
+  .responsive-table {
+    @apply block;
+  }
+
+  .responsive-table thead {
+    @apply hidden;
+  }
+
+  .responsive-table tbody tr {
+    @apply block mb-4 rounded-lg border bg-card p-4 shadow-sm;
+  }
+
+  .responsive-table tbody td {
+    @apply block text-right py-2 border-b last:border-0;
+  }
+
+  .responsive-table tbody td::before {
+    content: attr(data-label);
+    @apply float-left font-medium text-muted-foreground;
+  }
+}
