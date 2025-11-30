@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import '../config/network_config.dart';
 
 /// Socket.io Service for real-time communication
 /// Connects to backend Socket.io server and handles events
@@ -23,7 +23,7 @@ class SocketService {
       return;
     }
 
-    final baseUrl = _getBaseUrl();
+    final baseUrl = NetworkConfig.socketBaseUrl;
     debugPrint('🔌 Connecting to Socket.io server: $baseUrl');
 
     _socket = IO.io(
@@ -118,31 +118,6 @@ class SocketService {
     }
   }
 
-  /// Get base URL for Socket.io server
-  String _getBaseUrl() {
-    // Check for production URL from environment variable
-    const productionUrl = String.fromEnvironment(
-      'SOCKET_BASE_URL',
-      defaultValue: '',
-    );
-
-    if (productionUrl.isNotEmpty) {
-      return productionUrl;
-    }
-
-    // Development URLs based on platform
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    } else if (Platform.isAndroid) {
-      // Android emulator uses 10.0.2.2 to access host machine
-      return 'http://10.0.2.2:3000';
-    } else if (Platform.isIOS) {
-      // iOS simulator can access localhost directly
-      return 'http://localhost:3000';
-    } else {
-      return 'http://localhost:3000';
-    }
-  }
 }
 
 /// Riverpod Provider for SocketService

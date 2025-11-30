@@ -110,8 +110,8 @@ class _CreateGuestPassScreenState
       // Generate QR code
       final qrCode = const Uuid().v4();
 
-      // Get API client with fresh auth token
-      final apiClientWithToken = await ref.read(apiClientWithTokenProvider.future);
+      // Get API client (automatically handles auth via interceptor)
+      final apiClient = ref.read(apiClientProvider);
 
       final requestData = {
         'visitor_name': _nameController.text,
@@ -126,8 +126,8 @@ class _CreateGuestPassScreenState
 
       debugPrint('📤 Creating guest pass: $requestData');
 
-      // Call backend API with token
-      final response = await apiClientWithToken.post(
+      // Call backend API (auth token automatically attached)
+      final response = await apiClient.post(
         '/visitors/guest-pass',
         data: requestData,
       );

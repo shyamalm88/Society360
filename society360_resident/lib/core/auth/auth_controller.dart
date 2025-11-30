@@ -119,10 +119,32 @@ class AuthController extends _$AuthController {
     try {
       // First check local storage (for offline support)
       final isOnboarded = _storage.isOnboarded;
-      print('🔍 [AUTH] Local storage isOnboarded: $isOnboarded');
+      final storedFlatId = _storage.flatId;
+      print('🔍 [AUTH] Local storage isOnboarded: $isOnboarded, flatId: $storedFlatId');
 
-      if (isOnboarded) {
-        print('✅ [AUTH] User already onboarded locally, going to complete state');
+      final metadataRepo = ref.read(metadataRepositoryProvider);
+
+      if (isOnboarded && storedFlatId != null) {
+        print('🔍 [AUTH] User onboarded locally, checking backend sync...');
+
+        // Check if backend has the occupancy record
+        final userFlats = await metadataRepo.getMyFlats();
+        print('🔍 [AUTH] Backend returned ${userFlats.length} flat(s)');
+
+        if (userFlats.isEmpty) {
+          // User has local data but no backend record - sync it!
+          print('⚠️ [AUTH] Local data exists but no backend occupancy - syncing...');
+          final synced = await metadataRepo.ensureOccupancy(flatId: storedFlatId);
+
+          if (synced) {
+            print('✅ [AUTH] Backend occupancy synced successfully');
+          } else {
+            print('⚠️ [AUTH] Failed to sync occupancy, continuing anyway');
+          }
+        } else {
+          print('✅ [AUTH] Backend occupancy already exists');
+        }
+
         print('📝 [AUTH STATE] Setting state = AuthState.complete (from local storage)');
         state = AuthState.complete;
         print('📝 [AUTH STATE] State is now: $state');
@@ -132,7 +154,6 @@ class AuthController extends _$AuthController {
       // If not onboarded locally, check backend for existing flat assignments
       print('🔍 [AUTH] Not onboarded locally, checking backend for existing flats...');
 
-      final metadataRepo = ref.read(metadataRepositoryProvider);
       final userFlats = await metadataRepo.getMyFlats();
 
       print('🔍 [AUTH] Backend returned ${userFlats.length} flat(s)');

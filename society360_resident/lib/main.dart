@@ -82,10 +82,11 @@ class _Society360ResidentAppState extends ConsumerState<Society360ResidentApp> {
       fcmService.onForegroundMessage = (message) {
         debugPrint('📬 Foreground message received: ${message.notification?.title}');
 
-        // Immediately refresh pending visitors list (with error handling)
+        // Refresh pending visitors by invalidating the stream provider
+        // This restarts the stream and fetches fresh data immediately
         try {
           ref.invalidate(pendingVisitorsProvider);
-          debugPrint('🔄 Pending visitors list refreshed');
+          debugPrint('🔄 Pending visitors stream restarted');
         } catch (e) {
           debugPrint('⚠️ Error refreshing pending visitors: $e');
         }

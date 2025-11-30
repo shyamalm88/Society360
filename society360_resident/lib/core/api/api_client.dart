@@ -1,31 +1,41 @@
-import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../config/network_config.dart';
 
 /// API Client for Society360 Backend
+/// Handles all HTTP requests with automatic Firebase authentication
 class ApiClient {
-  final Dio _dio;
-  final String? authToken;
+  late final Dio _dio;
+  final bool _requiresAuth;
 
   ApiClient({
     required String baseUrl,
-    this.authToken,
-  }) : _dio = Dio(BaseOptions(
-          baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(seconds: 30),
-          headers: {
-            'Content-Type': 'application/json',
-            if (authToken != null) 'Authorization': 'Bearer $authToken',
-          },
-        )) {
-    // Add interceptors for logging
-    _dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
+    bool requiresAuth = true,
+  }) : _requiresAuth = requiresAuth {
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: NetworkConfig.connectTimeout,
+      receiveTimeout: NetworkConfig.receiveTimeout,
+      headers: {
+        'Content-Type': 'application/json',
+      },
     ));
+
+    // Add auth interceptor if authentication is required
+    if (_requiresAuth) {
+      _dio.interceptors.add(_AuthInterceptor());
+    }
+
+    // Add logging interceptor (only in debug mode)
+    if (kDebugMode) {
+      _dio.interceptors.add(LogInterceptor(
+        requestBody: true,
+        responseBody: true,
+        logPrint: (obj) => debugPrint(obj.toString()),
+      ));
+    }
   }
 
   /// GET request
@@ -64,7 +74,7 @@ class ApiClient {
     }
   }
 
-  /// Handle Dio errors
+  /// Handle Dio errors and convert to user-friendly messages
   String _handleError(DioException error) {
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
@@ -73,98 +83,90 @@ class ApiClient {
         return 'Connection timeout. Please check your internet connection.';
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode;
-        final message = error.response?.data['error'] ?? 'Unknown error occurred';
+        final data = error.response?.data;
+        String message = 'Unknown error occurred';
+
+        if (data is Map) {
+          message = data['error'] ?? data['message'] ?? message;
+        }
+
+        // Handle specific status codes
+        if (statusCode == 401) {
+          return 'Authentication failed. Please sign in again.';
+        } else if (statusCode == 403) {
+          return 'You do not have permission to perform this action.';
+        } else if (statusCode == 404) {
+          return 'Resource not found.';
+        } else if (statusCode != null && statusCode >= 500) {
+          return 'Server error. Please try again later.';
+        }
+
         return 'Error $statusCode: $message';
       case DioExceptionType.cancel:
         return 'Request cancelled';
+      case DioExceptionType.connectionError:
+        return 'Connection error. Please check your internet connection.';
       default:
         return 'Network error: ${error.message}';
     }
   }
 }
 
-/// Get the appropriate base URL based on platform
-String _getBaseUrl() {
-  // For production, use environment variable or const
-  const productionUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: '', // Empty means use development URLs
-  );
+/// Interceptor that automatically adds Firebase auth token to requests
+class _AuthInterceptor extends Interceptor {
+  @override
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
 
-  if (productionUrl.isNotEmpty) {
-    return productionUrl;
+      if (user != null) {
+        // Get fresh ID token (force refresh if expired)
+        final token = await user.getIdToken();
+
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
+          debugPrint('🔐 Auth token attached to request: ${options.path}');
+        }
+      } else {
+        debugPrint('⚠️ No authenticated user for request: ${options.path}');
+      }
+    } catch (e) {
+      debugPrint('❌ Error getting auth token: $e');
+      // Continue without token - let the server handle the 401
+    }
+
+    handler.next(options);
   }
 
-  // Development mode - auto-detect platform
-  // TODO: Update LOCAL_NETWORK_IP with your machine's IP for physical device testing
-  const localNetworkIp = '192.168.1.4'; // Your machine's IP on local network
-
-  if (kIsWeb) {
-    // Web - use localhost
-    return 'http://localhost:3000/v1';
-  } else if (Platform.isAndroid) {
-    // Android emulator uses 10.0.2.2 to access host machine
-    return 'http://10.0.2.2:3000/v1';
-
-    // For physical Android device, uncomment the line below:
-    // return 'http://$localNetworkIp:3000/v1';
-  } else if (Platform.isIOS) {
-    // iOS simulator can use localhost
-    return 'http://localhost:3000/v1';
-
-    // For physical iOS device, uncomment the line below:
-    // return 'http://$localNetworkIp:3000/v1';
-  } else {
-    // Default fallback
-    return 'http://localhost:3000/v1';
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    if (err.response?.statusCode == 401) {
+      debugPrint('🔒 Received 401 - Token may be expired or invalid');
+      // Could trigger a sign-out or token refresh here if needed
+    }
+    handler.next(err);
   }
 }
 
-/// Riverpod provider for ApiClient
+/// Main API client provider - automatically handles authentication
+/// Use this for all authenticated API calls
 final apiClientProvider = Provider<ApiClient>((ref) {
-  final baseUrl = _getBaseUrl();
-
-  // Log the base URL for debugging
-  debugPrint('🌐 API Base URL: $baseUrl');
-
-  // Get Firebase auth token if user is logged in
-  final firebaseUser = FirebaseAuth.instance.currentUser;
-  String? token;
-
-  if (firebaseUser != null) {
-    // Note: Firebase ID token needs to be refreshed regularly
-    // This is a simplified version. In production, you should handle token refresh
-    debugPrint('✅ Firebase user authenticated: ${firebaseUser.uid}');
-    // Token will be fetched asynchronously when needed
-  } else {
-    debugPrint('⚠️ No Firebase user authenticated');
-  }
+  debugPrint('🌐 API Base URL: ${NetworkConfig.apiBaseUrl}');
 
   return ApiClient(
-    baseUrl: baseUrl,
-    authToken: token, // Will be null for now, tokens fetched per request
+    baseUrl: NetworkConfig.apiBaseUrl,
+    requiresAuth: true,
   );
 });
 
-/// Provider for API client with auth token
-/// This provider fetches the current Firebase ID token and creates an ApiClient with it
-final apiClientWithTokenProvider = FutureProvider<ApiClient>((ref) async {
-  final baseUrl = _getBaseUrl();
-  final firebaseUser = FirebaseAuth.instance.currentUser;
-
-  String? token;
-  if (firebaseUser != null) {
-    try {
-      // Get fresh ID token - force refresh to avoid using expired cached tokens
-      token = await firebaseUser.getIdToken(true);
-      debugPrint('🔐 Firebase token fetched successfully');
-    } catch (e) {
-      debugPrint('❌ Failed to get Firebase token: $e');
-    }
-  }
-
+/// Unauthenticated API client provider
+/// Use this only for endpoints that don't require authentication
+final unauthenticatedApiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(
-    baseUrl: baseUrl,
-    authToken: token,
+    baseUrl: NetworkConfig.apiBaseUrl,
+    requiresAuth: false,
   );
 });

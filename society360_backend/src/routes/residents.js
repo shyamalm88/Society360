@@ -101,6 +101,98 @@ router.post('/', verifyFirebaseToken, async (req, res) => {
 });
 
 /**
+ * POST /ensure-occupancy
+ * Ensures authenticated user has a flat_occupancies record for their stored flat
+ * This fixes scenarios where onboarding was done with broken auth (mock user)
+ * and the real user doesn't have the proper database linkage.
+ */
+router.post('/ensure-occupancy', verifyFirebaseToken, async (req, res) => {
+  const client = await getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    const { flat_id, role } = req.body;
+    const userId = req.user.id;
+
+    if (!flat_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        error: 'flat_id is required',
+      });
+    }
+
+    // Check if user already has an occupancy for this flat
+    const existingOccupancy = await client.query(
+      `SELECT id FROM flat_occupancies
+       WHERE user_id = $1 AND flat_id = $2 AND end_date IS NULL`,
+      [userId, flat_id]
+    );
+
+    if (existingOccupancy.rows.length > 0) {
+      await client.query('COMMIT');
+      logger.info(`✅ User ${userId} already has occupancy for flat ${flat_id}`);
+      return res.json({
+        success: true,
+        message: 'Occupancy already exists',
+        data: { occupancy_id: existingOccupancy.rows[0].id, created: false },
+      });
+    }
+
+    // Verify the flat exists
+    const flatCheck = await client.query(
+      'SELECT id FROM flats WHERE id = $1',
+      [flat_id]
+    );
+
+    if (flatCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: 'Flat not found',
+      });
+    }
+
+    // Create the flat occupancy
+    const occupancyRole = role || 'owner';
+    const occupancyResult = await client.query(
+      `INSERT INTO flat_occupancies (flat_id, user_id, role, start_date, is_primary, source, created_at)
+       VALUES ($1, $2, $3, now(), $4, $5, now())
+       RETURNING id`,
+      [flat_id, userId, occupancyRole, true, 'ensure_occupancy']
+    );
+
+    // Ensure resident role assignment exists
+    await client.query(
+      `INSERT INTO role_assignments (user_id, role, scope_type, scope_id, granted_by, granted_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (user_id, role, scope_type, scope_id) DO NOTHING`,
+      [userId, 'resident', 'flat', flat_id, userId]
+    );
+
+    await client.query('COMMIT');
+
+    logger.info(`✅ Created occupancy for user ${userId} in flat ${flat_id} (ensure-occupancy)`);
+
+    res.json({
+      success: true,
+      message: 'Occupancy created successfully',
+      data: { occupancy_id: occupancyResult.rows[0].id, created: true },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    logger.error('Error ensuring occupancy:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to ensure occupancy',
+    });
+  } finally {
+    client.release();
+  }
+});
+
+/**
  * GET /my-flats
  * Get current user's flat assignments
  */

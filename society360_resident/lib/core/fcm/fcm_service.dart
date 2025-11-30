@@ -149,9 +149,13 @@ class FCMService {
   }
 
   /// Register FCM token with backend
-  Future<void> _registerTokenWithBackend(String token) async {
+  /// Includes retry logic for reliability
+  Future<void> _registerTokenWithBackend(String token, {int retryCount = 0}) async {
+    const maxRetries = 3;
+    const retryDelay = Duration(seconds: 2);
+
     try {
-      debugPrint('📤 Registering FCM token with backend...');
+      debugPrint('📤 Registering FCM token with backend (attempt ${retryCount + 1})...');
 
       final deviceType = Platform.isIOS ? 'ios' : Platform.isAndroid ? 'android' : 'web';
 
@@ -170,10 +174,27 @@ class FCMService {
       if (response.data['success'] == true) {
         debugPrint('✅ FCM token registered with backend');
       } else {
-        debugPrint('❌ Failed to register FCM token: ${response.data['error']}');
+        final error = response.data['error'] ?? 'Unknown error';
+        debugPrint('❌ Failed to register FCM token: $error');
+
+        // Retry on failure
+        if (retryCount < maxRetries) {
+          debugPrint('🔄 Retrying FCM token registration in ${retryDelay.inSeconds}s...');
+          await Future.delayed(retryDelay);
+          await _registerTokenWithBackend(token, retryCount: retryCount + 1);
+        }
       }
     } catch (e) {
       debugPrint('❌ Error registering FCM token: $e');
+
+      // Retry on error (e.g., network issues, auth not ready)
+      if (retryCount < maxRetries) {
+        debugPrint('🔄 Retrying FCM token registration in ${retryDelay.inSeconds}s...');
+        await Future.delayed(retryDelay);
+        await _registerTokenWithBackend(token, retryCount: retryCount + 1);
+      } else {
+        debugPrint('❌ Max retries reached for FCM token registration');
+      }
     }
   }
 

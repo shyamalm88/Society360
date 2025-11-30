@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/metadata_models.dart';
 import '../../core/api/api_client.dart';
+import '../../core/config/network_config.dart';
 
 /// Visitor Repository
 /// Handles visitor-related API calls for pending approvals
@@ -13,20 +15,26 @@ class VisitorRepository {
   /// Fetch all pending visitor requests for current user's flats
   Future<List<Visitor>> getPendingVisitors() async {
     try {
+      debugPrint('📥 Fetching pending visitors...');
       final response = await _apiClient.get('/visitors/pending');
 
+      debugPrint('📥 Response: ${response.statusCode} - ${response.data}');
+
       if (response.data['success'] == true) {
-        final List<dynamic> visitorsData = response.data['data'];
+        final List<dynamic> visitorsData = response.data['data'] ?? [];
+        debugPrint('✅ Found ${visitorsData.length} pending visitors');
 
         return visitorsData.map((visitorData) {
           return Visitor.fromJson(visitorData as Map<String, dynamic>);
         }).toList();
       }
 
+      debugPrint('⚠️ API returned success=false: ${response.data}');
       return [];
     } catch (e) {
-      print('❌ Error fetching pending visitors: $e');
-      return [];
+      debugPrint('❌ Error fetching pending visitors: $e');
+      // Rethrow so the stream can handle retry logic
+      rethrow;
     }
   }
 
@@ -146,20 +154,18 @@ final visitorRepositoryProvider = Provider<VisitorRepository>((ref) {
   return VisitorRepository(apiClient);
 });
 
-/// Provider for pending visitors list
-/// This provider auto-invalidates every 30 seconds to refresh pending visitors
-final pendingVisitorsProvider = FutureProvider<List<Visitor>>((ref) async {
+/// Provider for pending visitors list with auto-refresh
+/// Uses StreamProvider for safe periodic updates without timer leak issues
+final pendingVisitorsProvider = StreamProvider<List<Visitor>>((ref) {
   final repo = ref.watch(visitorRepositoryProvider);
 
-  // Auto-refresh every 30 seconds
-  final timer = Timer.periodic(const Duration(seconds: 30), (_) {
-    ref.invalidateSelf();
-  });
-
-  // Cleanup timer when provider is disposed
-  ref.onDispose(() => timer.cancel());
-
-  return repo.getPendingVisitors();
+  // Create a stream that emits visitor data periodically
+  return _createAutoRefreshStream<List<Visitor>>(
+    fetchData: () => repo.getPendingVisitors(),
+    interval: NetworkConfig.visitorRefreshInterval,
+    name: 'pendingVisitors',
+    fallbackValue: [], // Return empty list on error instead of failing
+  );
 });
 
 /// Provider for pending visitors count
@@ -173,17 +179,71 @@ final pendingVisitorsCountProvider = Provider<int>((ref) {
   );
 });
 
-/// Provider for today's visitors for the current flat
-final todaysVisitorsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, flatId) async {
+/// Provider for today's visitors for the current flat with auto-refresh
+final todaysVisitorsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((ref, flatId) {
   final repo = ref.watch(visitorRepositoryProvider);
 
-  // Auto-refresh every 30 seconds
-  final timer = Timer.periodic(const Duration(seconds: 30), (_) {
-    ref.invalidateSelf();
-  });
-
-  // Cleanup timer when provider is disposed
-  ref.onDispose(() => timer.cancel());
-
-  return repo.getTodaysVisitors(flatId);
+  // Create a stream that emits visitor data periodically
+  return _createAutoRefreshStream<List<Map<String, dynamic>>>(
+    fetchData: () => repo.getTodaysVisitors(flatId),
+    interval: NetworkConfig.visitorRefreshInterval,
+    name: 'todaysVisitors',
+    fallbackValue: [], // Return empty list on error instead of failing
+  );
 });
+
+/// Helper function to create an auto-refreshing stream
+/// Safely handles periodic data fetching without timer leaks
+Stream<T> _createAutoRefreshStream<T>({
+  required Future<T> Function() fetchData,
+  required Duration interval,
+  required String name,
+  T? fallbackValue,
+}) async* {
+  const maxInitialRetries = 3;
+  const retryDelay = Duration(seconds: 2);
+
+  // Try initial fetch with retries
+  T? initialData;
+  Exception? lastError;
+
+  for (int attempt = 0; attempt < maxInitialRetries; attempt++) {
+    try {
+      debugPrint('🔄 [$name] Initial fetch (attempt ${attempt + 1})...');
+      initialData = await fetchData();
+      debugPrint('✅ [$name] Initial fetch successful');
+      break;
+    } catch (e) {
+      lastError = e is Exception ? e : Exception(e.toString());
+      debugPrint('❌ [$name] Initial fetch error (attempt ${attempt + 1}): $e');
+
+      if (attempt < maxInitialRetries - 1) {
+        debugPrint('🔄 [$name] Retrying in ${retryDelay.inSeconds}s...');
+        await Future.delayed(retryDelay);
+      }
+    }
+  }
+
+  // Emit initial data or throw if all retries failed
+  if (initialData != null) {
+    yield initialData;
+  } else if (fallbackValue != null) {
+    debugPrint('⚠️ [$name] Using fallback value after all retries failed');
+    yield fallbackValue;
+  } else if (lastError != null) {
+    debugPrint('❌ [$name] All initial fetch retries failed, throwing error');
+    throw lastError;
+  }
+
+  // Then emit periodically (continues even after errors)
+  await for (final _ in Stream.periodic(interval)) {
+    try {
+      debugPrint('🔄 [$name] Refreshing...');
+      final data = await fetchData();
+      yield data;
+    } catch (e) {
+      debugPrint('❌ [$name] Refresh error: $e');
+      // Continue the stream even on error - next tick will retry
+    }
+  }
+}

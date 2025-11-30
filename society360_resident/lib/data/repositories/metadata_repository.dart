@@ -200,11 +200,42 @@ class MetadataRepository {
     }
   }
 
+  /// Ensure user has flat occupancy in backend
+  /// This fixes scenarios where onboarding was done with broken auth
+  Future<bool> ensureOccupancy({
+    required String flatId,
+    String role = 'owner',
+  }) async {
+    try {
+      print('🔗 [METADATA] Ensuring occupancy for flat: $flatId');
+      final response = await _apiClient.post('/resident-requests/ensure-occupancy', data: {
+        'flat_id': flatId,
+        'role': role,
+      });
+
+      if (response.data['success'] == true) {
+        final created = response.data['data']?['created'] ?? false;
+        if (created) {
+          print('✅ [METADATA] Occupancy created successfully');
+        } else {
+          print('✅ [METADATA] Occupancy already exists');
+        }
+        return true;
+      }
+
+      print('⚠️ [METADATA] Failed to ensure occupancy: ${response.data}');
+      return false;
+    } catch (e) {
+      print('❌ [METADATA] Error ensuring occupancy: $e');
+      return false;
+    }
+  }
+
   /// Get current user's flat assignments
   Future<List<Map<String, dynamic>>> getMyFlats() async {
     try {
-      print('🔍 [METADATA] Calling /my-flats endpoint...');
-      final response = await _apiClient.get('/my-flats');
+      print('🔍 [METADATA] Calling /resident-requests/my-flats endpoint...');
+      final response = await _apiClient.get('/resident-requests/my-flats');
 
       print('🔍 [METADATA] Response received: ${response.data}');
 

@@ -646,7 +646,8 @@ router.get("/pending-count", verifyFirebaseToken, async (req, res) => {
        WHERE flat_id = $1
          AND status = 'pending'
          AND qr_code IS NULL
-         AND access_code IS NULL`,
+         AND access_code IS NULL
+         AND (expected_end IS NULL OR expected_end > NOW())`,
       [flat_id]
     );
 
@@ -1011,6 +1012,7 @@ router.get("/pending", verifyFirebaseToken, async (req, res) => {
          AND v.status = 'pending'
          AND v.qr_code IS NULL
          AND v.access_code IS NULL
+         AND (v.expected_end IS NULL OR v.expected_end > NOW())
        ORDER BY v.id, v.created_at DESC`,
       [userId]
     );
